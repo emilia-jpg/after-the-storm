@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Anchor — Time</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --night:#181a1f;--night-2:#22252c;--night-3:#2d3038;
+  --text:#e8e8e0;--text-m:#bdbdb4;--text-f:#7a7a72;
+  --border:rgba(255,255,255,.1);
+  --accent:#5fb89a;--accent-d:#3a8a72;
+  --warn:#e8552c;
+  --r:14px;--r-sm:8px;--r-lg:22px;
+}
+html,body{height:100%;font-family:Georgia,serif;font-size:15px;color:var(--text);background:var(--night);overflow:hidden}
+
+.screen{display:none;position:fixed;inset:0;overflow-y:auto}
+.screen.active{display:block}
+
+/* ── MAIN 3D ── */
+#screen-main{overflow:hidden;background:var(--night)}
+#three-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+.time-scrub{
+  position:absolute;top:16px;left:50%;transform:translateX(-50%);
+  background:rgba(34,37,44,.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--border);border-radius:18px;padding:10px 16px;
+  display:flex;flex-direction:column;gap:6px;
+  width:min(380px,calc(100% - 32px));
+  font-size:13px;z-index:500;font-family:system-ui,sans-serif;color:var(--text);
+}
+.time-scrub-row{display:flex;align-items:center;justify-content:center;gap:8px}
+.time-label{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums;font-size:13px}
+.time-slider-row{padding:0 2px}
+#time-slider{
+  -webkit-appearance:none;appearance:none;
+  width:100%;height:4px;background:var(--night-3);border-radius:2px;outline:none;
+  cursor:pointer;
+}
+#time-slider::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;
+  width:14px;height:14px;background:var(--accent);border-radius:50%;
+  cursor:pointer;
+}
+#time-slider::-moz-range-thumb{
+  width:14px;height:14px;background:var(--accent);border:none;border-radius:50%;
+  cursor:pointer;
+}
+
+.archive-toggle{position:absolute;top:16px;right:14px;background:rgba(34,37,44,.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--border);color:var(--text-m);padding:9px 14px;border-radius:11px;cursor:pointer;font-family:system-ui,sans-serif;font-size:12px;z-index:500;display:flex;align-items:center;gap:6px;transition:color .2s,background .2s}
+.archive-toggle:hover{background:rgba(95,184,154,.2);color:var(--text)}
+.archive-toggle.active{background:var(--accent);color:var(--night);border-color:var(--accent)}
+
+.bottom-bar{position:fixed;bottom:0;left:0;right:0;padding:12px 16px 28px;z-index:600;background:linear-gradient(to top,rgba(24,26,31,1) 60%,rgba(24,26,31,0))}
+.btn-log{display:block;width:100%;max-width:480px;margin:0 auto;padding:17px;background:var(--warn);color:#fff;border:none;border-radius:var(--r-lg);font-family:system-ui,sans-serif;font-size:16px;font-weight:600;cursor:pointer;transition:background .2s,transform .1s;box-shadow:0 4px 20px rgba(232,85,44,.35)}
+.btn-log:hover{background:#d63d4d}
+.btn-log:active{transform:scale(.98)}
+
+/* ── LOG SCREEN ── */
+#screen-log{background:var(--night)}
+.log-wrap{max-width:520px;margin:0 auto;padding:40px 24px 80px;display:flex;flex-direction:column;gap:22px}
+.btn-back{display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--text-m);font-size:14px;font-family:system-ui,sans-serif;cursor:pointer;padding:6px 0;transition:color .2s}
+.btn-back:hover{color:var(--text)}
+h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
+.intro{font-size:14px;color:var(--text-m);line-height:1.7;font-family:system-ui,sans-serif}
+
+.section{display:flex;flex-direction:column;gap:10px;font-family:system-ui,sans-serif}
+.section-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--text-f)}
+.section-help{font-size:13px;color:var(--text-m);line-height:1.55}
+
+.location-status{background:var(--night-2);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px 16px;font-size:13px;color:var(--text-m);font-family:system-ui,monospace}
+
+.duration-input{display:flex;gap:8px;align-items:center}
+.duration-input input{flex:1;padding:14px;border:1px solid var(--border);border-radius:var(--r);background:var(--night-2);font-family:system-ui,sans-serif;font-size:15px;color:var(--text);outline:none;transition:border-color .2s}
+.duration-input input:focus{border-color:var(--accent)}
+.duration-input select{padding:14px;border:1px solid var(--border);border-radius:var(--r);background:var(--night-2);font-family:system-ui,sans-serif;font-size:15px;color:var(--text);outline:none;cursor:pointer}
+
+.mode-tabs{display:flex;gap:0;background:var(--night-2);border:1px solid var(--border);border-radius:var(--r);padding:4px;font-family:system-ui,sans-serif}
+.mode-tab{flex:1;background:none;border:none;color:var(--text-m);font-family:system-ui,sans-serif;font-size:13px;padding:9px 8px;border-radius:calc(var(--r) - 4px);cursor:pointer;transition:background .2s,color .2s}
+.mode-tab:hover{color:var(--text)}
+.mode-tab.active{background:var(--night-3);color:var(--text);font-weight:600}
+
+.exact-input{display:flex;gap:8px;align-items:center}
+.exact-input input{flex:1;padding:14px;border:1px solid var(--border);border-radius:var(--r);background:var(--night-2);font-family:system-ui,sans-serif;font-size:15px;color:var(--text);outline:none;transition:border-color .2s;color-scheme:dark}
+.exact-input input:focus{border-color:var(--accent)}
+
+.quick-picks{display:flex;flex-wrap:wrap;gap:8px}
+.quick-pick{background:var(--night-2);border:1px solid var(--border);border-radius:100px;padding:8px 14px;font-size:12px;font-family:system-ui,sans-serif;color:var(--text-m);cursor:pointer;transition:background .2s,color .2s,border-color .2s}
+.quick-pick:hover{background:var(--night-3);color:var(--text)}
+.quick-pick.active{background:var(--accent);color:var(--night);border-color:var(--accent)}
+
+.resolved-preview{background:var(--night-2);border:1px solid var(--border);border-radius:var(--r);padding:16px;font-family:system-ui,sans-serif}
+.resolved-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--text-f);margin-bottom:6px}
+.resolved-date{font-size:17px;color:var(--accent);font-weight:600}
+.resolved-relative{font-size:13px;color:var(--text-m);margin-top:4px}
+
+.btn-primary{width:100%;padding:16px;background:var(--accent);color:var(--night);border:none;border-radius:var(--r);font-family:system-ui,sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:background .2s,transform .1s,opacity .2s}
+.btn-primary:hover:not(:disabled){background:#6fc8aa}
+.btn-primary:active:not(:disabled){transform:scale(.98)}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(16px);background:var(--night-3);color:var(--text);border:1px solid var(--border);border-radius:100px;padding:11px 20px;font-size:13px;font-weight:500;opacity:0;transition:opacity .3s,transform .3s;z-index:9999;pointer-events:none;white-space:nowrap;font-family:system-ui,sans-serif}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<!-- ── MAIN 3D ── -->
+<div id="screen-main" class="screen active">
+  <canvas id="three-canvas"></canvas>
+  <div class="time-scrub" id="time-scrub">
+    <div class="time-scrub-row">
+      <span class="time-label" id="time-label">Now</span>
+    </div>
+    <input type="range" id="time-slider" min="0" max="1000" value="1000" step="1"/>
+  </div>
+  <div class="bottom-bar">
+    <button class="btn-log" id="btn-log">I'm feeling anxious — log this</button>
+  </div>
+</div>
+
+<!-- ── LOG SCREEN ── -->
+<div id="screen-log" class="screen">
+  <div class="log-wrap">
+    <button class="btn-back" id="btn-back">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+      Back
+    </button>
+    <h1>Mark this anxiety and travel past it</h1>
+    <p class="intro">You don't need to name what scares you. Just estimate how far you need to travel forward in time before the threat is behind you — when you'd be able to look back at it.</p>
+
+    <div class="section">
+      <span class="section-label">Place</span>
+      <div class="location-status" id="location-status">Locating you…</div>
+    </div>
+
+    <div class="section">
+      <span class="section-label">Mind-travel to when this will be behind you</span>
+      <p class="section-help">How far do you need to go? Estimate or pick an exact date if you know.</p>
+
+      <div class="mode-tabs">
+        <button class="mode-tab active" data-mode="quick">Quick pick</button>
+        <button class="mode-tab" data-mode="custom">Custom duration</button>
+        <button class="mode-tab" data-mode="exact">Exact date</button>
+      </div>
+
+      <div class="mode-panel" data-panel="quick">
+        <div class="quick-picks" id="quick-picks">
+          <button class="quick-pick" data-amount="1" data-unit="hours">1 hour</button>
+          <button class="quick-pick" data-amount="1" data-unit="days">tomorrow</button>
+          <button class="quick-pick" data-amount="1" data-unit="weeks">next week</button>
+          <button class="quick-pick" data-amount="1" data-unit="months">next month</button>
+          <button class="quick-pick" data-amount="6" data-unit="months">in 6 months</button>
+          <button class="quick-pick" data-amount="1" data-unit="years">in a year</button>
+          <button class="quick-pick" data-amount="5" data-unit="years">in 5 years</button>
+        </div>
+      </div>
+
+      <div class="mode-panel" data-panel="custom" style="display:none">
+        <div class="duration-input">
+          <input type="number" id="duration-amount" min="1" placeholder="amount"/>
+          <select id="duration-unit">
+            <option value="minutes">minutes</option>
+            <option value="hours">hours</option>
+            <option value="days" selected>days</option>
+            <option value="weeks">weeks</option>
+            <option value="months">months</option>
+            <option value="years">years</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="mode-panel" data-panel="exact" style="display:none">
+        <div class="exact-input">
+          <input type="datetime-local" id="exact-datetime"/>
+        </div>
+      </div>
+
+      <div class="resolved-preview" id="resolved-preview" style="display:none">
+        <div class="resolved-label">You'll look back from</div>
+        <div class="resolved-date" id="resolved-date">—</div>
+        <div class="resolved-relative" id="resolved-relative">—</div>
+      </div>
+    </div>
+
+    <button class="btn-primary" id="btn-save" disabled>Leave this here</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ── State ──────────────────────────────────────────────────────
+// Each anxiety: {
+//   id, lat, lng, createdAt (ms), resolvedAt (ms)
+// }
+const S = {
+  anxieties: [],
+  currentPos: null,
+  watchId: null,
+  // Time-scrub: simOffset is in milliseconds, ≤ 0.
+  // simNow = realNow + simOffset. At simOffset=0, we're viewing the present.
+  // Negative values let you scrub backward into the past.
+  simOffset: 0,
+  // Log screen state
+  pendingPos: null,
+  selectedAmount: null,
+  selectedUnit: null,
+  selectedResolvedAt: null,  // set directly by the exact-date input; takes precedence
+  currentMode: 'quick',      // 'quick' | 'custom' | 'exact'
+};
+
+// ── Persist ────────────────────────────────────────────────────
+function persist() {
+  localStorage.setItem('anchor-v2', JSON.stringify({ anxieties: S.anxieties }));
+}
+function hydrate() {
+  try {
+    const d = JSON.parse(localStorage.getItem('anchor-v2')||'{}');
+    S.anxieties = d.anxieties || [];
+  } catch {}
+}
+
+// ── Screens ────────────────────────────────────────────────────
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id===id));
+}
+
+// ── Time helpers ───────────────────────────────────────────────
+function nowMs() { return Date.now(); }
+
+function fmtDate(ms) {
+  const d = new Date(ms);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function fmtRelative(targetMs, fromMs = nowMs()) {
+  const diff = targetMs - fromMs;
+  const abs = Math.abs(diff);
+  const future = diff >= 0;
+  const sec = 1000, min = 60*sec, hr = 60*min, day = 24*hr, week = 7*day, month = 30*day, year = 365*day;
+
+  let n, unit;
+  if (abs < hr) { n = Math.max(1, Math.round(abs/min)); unit = n===1?'minute':'minutes'; }
+  else if (abs < day) { n = Math.round(abs/hr); unit = n===1?'hour':'hours'; }
+  else if (abs < week*2) { n = Math.round(abs/day); unit = n===1?'day':'days'; }
+  else if (abs < month*2) { n = Math.round(abs/week); unit = n===1?'week':'weeks'; }
+  else if (abs < year) { n = Math.round(abs/month); unit = n===1?'month':'months'; }
+  else { n = (abs/year).toFixed(1).replace(/\.0$/,''); unit = n==='1'?'year':'years'; }
+
+  return future ? `in ${n} ${unit}` : `${n} ${unit} ago`;
+}
+
+function addDuration(fromMs, amount, unit) {
+  const d = new Date(fromMs);
+  switch (unit) {
+    case 'minutes': d.setMinutes(d.getMinutes() + amount); break;
+    case 'hours': d.setHours(d.getHours() + amount); break;
+    case 'days': d.setDate(d.getDate() + amount); break;
+    case 'weeks': d.setDate(d.getDate() + amount * 7); break;
+    case 'months': d.setMonth(d.getMonth() + amount); break;
+    case 'years': d.setFullYear(d.getFullYear() + amount); break;
+  }
+  return d.getTime();
+}
+
+// ── Geo helpers ────────────────────────────────────────────────
+function fmtCoord(lat, lng) {
+  return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+}
+
+// ── Three.js scene ─────────────────────────────────────────────
+let renderer, scene, camera, controls, composer;
+let plane;                           // the deformable "present" plane
+
+// World units:
+//   1 horizontal unit = ~3 metres of physical space (so a 1km area = ~333 units)
+//   1 vertical unit = 1 day of time
+const METRES_PER_UNIT_H = 3;
+const MS_PER_UNIT_V = 24 * 60 * 60 * 1000;
+
+function initThree() {
+  if (renderer) return;
+  const canvas = document.getElementById('three-canvas');
+  const w0 = canvas.offsetWidth || window.innerWidth;
+  const h0 = canvas.offsetHeight || window.innerHeight;
+
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(w0, h0, false);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x181a1f);
+  scene.fog = new THREE.Fog(0x181a1f, 120, 380);
+
+  camera = new THREE.PerspectiveCamera(45, w0/h0, 0.1, 2000);
+  camera.position.set(80, 120, 130);
+  camera.lookAt(0, 20, 0);
+
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.minDistance = 40;
+  controls.maxDistance = 800;
+  controls.minPolarAngle = 0.1;
+  controls.maxPolarAngle = Math.PI * 0.49;
+  controls.target.set(0, 20, 0);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.5);
+  sun.position.set(40, 80, 30);
+  scene.add(sun);
+  const fill = new THREE.DirectionalLight(0xfff2dc, 0.2);
+  fill.position.set(-30, 40, -20);
+  scene.add(fill);
+
+  // ── The deformable present plane ────────────────────────────
+  // The plane is high-res so vertices can be pushed up into peaks.
+  // Width/height match the world coordinate range; segments determine
+  // smoothness of the deformation.
+  const PLANE_SIZE = 280;            // 280 world units across (~840m)
+  const PLANE_SEGMENTS = 120;        // 120x120 vertices = smooth peaks (lighter than 160)
+  const planeGeo = new THREE.PlaneGeometry(PLANE_SIZE, PLANE_SIZE, PLANE_SEGMENTS, PLANE_SEGMENTS);
+  // Store the original (flat) positions so we can rebuild deformation each frame
+  planeGeo.userData.originalPositions = planeGeo.attributes.position.array.slice();
+
+  const planeMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: 0xffffff,
+    emissiveIntensity: 0.12,
+    toneMapped: false,
+    transparent: false,
+    opacity: 1.0,
+    roughness: 1.0,
+    metalness: 0,
+    side: THREE.DoubleSide,
+    flatShading: false,
+  });
+  plane = new THREE.Mesh(planeGeo, planeMat);
+  plane.rotation.x = -Math.PI / 2;
+  plane.position.y = 0;
+  scene.add(plane);
+
+  // Wireframe grid that conforms to the deformed plane.
+  // Built as a LineSegments object from the same geometry so it bends with it.
+  const wireGeo = new THREE.WireframeGeometry(planeGeo);
+  const wireMat = new THREE.LineBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0.25,
+  });
+  const wireframe = new THREE.LineSegments(wireGeo, wireMat);
+  plane.add(wireframe);
+  // Store reference so we can update it when the plane deforms
+  plane.userData.wireframe = wireframe;
+
+  // ── Post-processing ────────────────────────────────────────
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  composer.addPass(new UnrealBloomPass(
+    new THREE.Vector2(w0, h0),
+    0.25, 0.8, 0.85
+  ));
+  composer.addPass(new OutputPass());
+
+  const resize = () => {
+    const w = canvas.offsetWidth, h = canvas.offsetHeight;
+    renderer.setSize(w, h, false);
+    composer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  };
+  window.addEventListener('resize', resize);
+  resize();
+  requestAnimationFrame(()=>requestAnimationFrame(resize));
+
+  rebuildScene();
+  animate();
+}
+
+// Project lat/lng to plane coordinates relative to current position
+function projectToScene(lat, lng) {
+  if (!S.currentPos) return { x: 0, z: 0 };
+  const dLat = lat - S.currentPos.lat;
+  const dLng = lng - S.currentPos.lng;
+  const x = dLng * 111000 * Math.cos(S.currentPos.lat * Math.PI/180) / METRES_PER_UNIT_H;
+  const z = -dLat * 111000 / METRES_PER_UNIT_H;
+  return { x, z };
+}
+
+// Deform the plane mesh so each active anxiety raises a smooth Gaussian peak
+// at its location, with the peak's height = the remaining time until resolution.
+// Overlapping peaks add together, naturally forming ridges/merged tents.
+function deformPlane() {
+  if (!plane || !S.currentPos) return;
+  const simNow = nowMs() + S.simOffset;
+  const geo = plane.geometry;
+  const positions = geo.attributes.position;
+  const original = geo.userData.originalPositions;
+
+  // Build a list of active peaks. An anxiety contributes a peak only if:
+  //   - It had been created by the simulated "now" (createdAt <= simNow)
+  //   - Its resolvedAt is still in the future relative to simNow
+  const peaks = [];
+  for (const a of S.anxieties) {
+    if (a.createdAt > simNow) continue;             // didn't exist yet at this point
+    const remainingMs = a.resolvedAt - simNow;
+    if (remainingMs <= 0) continue;                 // already resolved at this point
+    const remainingDays = remainingMs / MS_PER_UNIT_V;
+    const { x, z } = projectToScene(a.lat, a.lng);
+    const height = remainingDays;
+    const sigma = Math.max(2.5, Math.min(14, 2 + height * 0.18));
+    peaks.push({ x, z, height, twoSigmaSq: 2 * sigma * sigma });
+  }
+
+  // For each vertex of the plane geometry, sum the Gaussian contributions
+  // from all active peaks and write the result to the Z component
+  // (PlaneGeometry vertices live in XY; Z becomes height after the rotation).
+  // We iterate over (x, y) from the original buffer to keep the flat baseline
+  // stable regardless of how many deformations we've applied.
+  for (let i = 0; i < positions.count; i++) {
+    const ox = original[i*3];
+    const oy = original[i*3 + 1];
+    // Plane is rotated -PI/2 around X axis, so plane's local (x, y) maps to
+    // world (x, z) — and a positive local Z lifts the vertex into world +Y.
+    let h = 0;
+    for (const p of peaks) {
+      const dx = ox - p.x;
+      const dy = oy - (-p.z);  // we used z = -dLat earlier; in plane-local y, peak is at -z_world
+      const distSq = dx*dx + dy*dy;
+      h += p.height * Math.exp(-distSq / p.twoSigmaSq);
+    }
+    positions.setX(i, ox);
+    positions.setY(i, oy);
+    positions.setZ(i, h);
+  }
+  positions.needsUpdate = true;
+  geo.computeVertexNormals();
+
+  // Rebuild the wireframe so it follows the deformation
+  if (plane.userData.wireframe) {
+    const wf = plane.userData.wireframe;
+    wf.geometry.dispose();
+    wf.geometry = new THREE.WireframeGeometry(geo);
+  }
+}
+
+function rebuildScene() {
+  // Nothing per-anxiety to build any more — the deformation IS the scene.
+  // Just trigger an update.
+  deformPlane();
+}
+
+let lastNowUpdate = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  const t = performance.now();
+  // Deform 4x per second is plenty — the topography only changes slowly,
+  // following real-world time. Plane mesh has ~26k vertices so we want this throttled.
+  if (t - lastNowUpdate > 250) {
+    lastNowUpdate = t;
+    deformPlane();
+    updateTimeUI();
+  }
+  controls.update();
+  composer.render();
+}
+
+function updateTimeUI() {
+  const label = document.getElementById('time-label');
+  if (S.simOffset >= -60 * 1000) {
+    // Right at "now" (within a minute) — show the present label
+    label.textContent = 'Now';
+  } else {
+    // Showing a past moment — display its date
+    const simNow = nowMs() + S.simOffset;
+    label.textContent = new Date(simNow).toLocaleDateString('en-US',
+      { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+}
+
+// History bounds — derived from the earliest anxiety we have. Returns a
+// millisecond timestamp representing how far back the slider can scrub.
+function getHistoryStartMs() {
+  if (S.anxieties.length === 0) return nowMs(); // no data → no past
+  // Earliest createdAt across all anxieties, then back off slightly so
+  // you can see the moment right BEFORE that first peak appeared.
+  const minCreated = Math.min(...S.anxieties.map(a => a.createdAt));
+  return minCreated - 60 * 60 * 1000;  // 1 hour before earliest
+}
+
+// Slider value 0..1000 → simOffset (ms, ≤ 0)
+function sliderValueToOffset(v) {
+  const start = getHistoryStartMs();
+  const realNow = nowMs();
+  const span = realNow - start;
+  if (span <= 0) return 0;
+  // Linear: 0 = start of history (oldest), 1000 = now
+  return -((1000 - v) / 1000) * span;
+}
+function offsetToSliderValue(offset) {
+  const start = getHistoryStartMs();
+  const realNow = nowMs();
+  const span = realNow - start;
+  if (span <= 0) return 1000;
+  // offset is ≤ 0
+  return 1000 - ((-offset / span) * 1000);
+}
+
+// ── Geolocation ────────────────────────────────────────────────
+function startWatch() {
+  if (!navigator.geolocation) {
+    toast('Geolocation not available in this browser');
+    return;
+  }
+  S.watchId = navigator.geolocation.watchPosition(
+    pos => {
+      S.currentPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      // Any time our position changes, the deformation needs to be recomputed
+      // (peaks are placed relative to the user's current location).
+      deformPlane();
+    },
+    err => {
+      // GeolocationPositionError has codes:
+      // 1 = permission denied, 2 = position unavailable, 3 = timeout
+      const messages = {
+        1: 'Location permission denied',
+        2: 'Location unavailable right now',
+        3: 'Locating timed out — retrying',
+      };
+      console.warn('Geolocation error:', err.code, err.message);
+      toast(messages[err.code] || 'Location error');
+    },
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 }
+  );
+}
+
+// ── Toast ──────────────────────────────────────────────────────
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'), 2500);
+}
+
+// ── Boot ───────────────────────────────────────────────────────
+hydrate();
+function whenSized(el, cb, maxTries=60) {
+  let tries = 0;
+  const check = () => {
+    if (el.offsetWidth > 0 && el.offsetHeight > 0) return cb();
+    if (++tries >= maxTries) return cb();
+    requestAnimationFrame(check);
+  };
+  check();
+}
+
+whenSized(document.getElementById('three-canvas'), () => {
+  initThree();
+  startWatch();
+  updateTimeUI();
+});
+
+// ── Time scrub slider ──────────────────────────────────────────
+const timeSlider = document.getElementById('time-slider');
+timeSlider.addEventListener('input', e => {
+  const v = parseFloat(e.target.value);
+  S.simOffset = sliderValueToOffset(v);
+  // Snap to "now" if very close to the right edge
+  if (v > 995) S.simOffset = 0;
+  deformPlane();
+  updateTimeUI();
+});
+
+// ── Events: log flow ───────────────────────────────────────────
+
+// Open log screen: reset all picker state, capture current position
+document.getElementById('btn-log').addEventListener('click', () => {
+  if (!S.currentPos) { toast('Still locating you — try again in a moment'); return; }
+  S.pendingPos = { ...S.currentPos };
+  resetLogState();
+  // Default tab: Quick pick
+  switchMode('quick');
+  document.getElementById('location-status').textContent =
+    `📍 ${fmtCoord(S.pendingPos.lat, S.pendingPos.lng)}`;
+  show('screen-log');
+});
+
+function resetLogState() {
+  S.selectedAmount = null;
+  S.selectedUnit = null;
+  S.selectedResolvedAt = null;
+  document.querySelectorAll('.quick-pick').forEach(b => b.classList.remove('active'));
+  document.getElementById('duration-amount').value = '';
+  document.getElementById('duration-unit').value = 'days';
+  document.getElementById('exact-datetime').value = '';
+  document.getElementById('resolved-preview').style.display = 'none';
+  document.getElementById('btn-save').disabled = true;
+}
+
+// Switch between Quick / Custom / Exact panels
+function switchMode(mode) {
+  S.currentMode = mode;
+  document.querySelectorAll('.mode-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.mode === mode);
+  });
+  document.querySelectorAll('.mode-panel').forEach(p => {
+    p.style.display = p.dataset.panel === mode ? '' : 'none';
+  });
+  // Clear selections from OTHER modes so they don't carry over hidden
+  if (mode !== 'quick') {
+    document.querySelectorAll('.quick-pick').forEach(b => b.classList.remove('active'));
+  }
+  if (mode !== 'custom') {
+    document.getElementById('duration-amount').value = '';
+  }
+  if (mode !== 'exact') {
+    document.getElementById('exact-datetime').value = '';
+  }
+  S.selectedAmount = null;
+  S.selectedUnit = null;
+  S.selectedResolvedAt = null;
+  updateResolvedPreview();
+}
+
+document.querySelectorAll('.mode-tab').forEach(tab => {
+  tab.addEventListener('click', () => switchMode(tab.dataset.mode));
+});
+
+document.getElementById('btn-back').addEventListener('click', () => {
+  show('screen-main');
+});
+
+// Compute the resolvedAt timestamp the user has chosen, regardless of mode.
+// Returns null if nothing valid is selected yet.
+function currentResolvedAt() {
+  if (S.selectedResolvedAt) return S.selectedResolvedAt;
+  if (S.selectedAmount && S.selectedUnit) {
+    return addDuration(nowMs(), S.selectedAmount, S.selectedUnit);
+  }
+  return null;
+}
+
+function updateResolvedPreview() {
+  const resolvedAt = currentResolvedAt();
+  if (!resolvedAt || resolvedAt <= nowMs()) {
+    document.getElementById('resolved-preview').style.display = 'none';
+    document.getElementById('btn-save').disabled = true;
+    return;
+  }
+  document.getElementById('resolved-date').textContent = fmtDate(resolvedAt);
+  document.getElementById('resolved-relative').textContent =
+    `that's ${fmtRelative(resolvedAt)}`;
+  document.getElementById('resolved-preview').style.display = 'block';
+  document.getElementById('btn-save').disabled = false;
+}
+
+// Quick-pick buttons
+document.querySelectorAll('.quick-pick').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.quick-pick').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    S.selectedAmount = parseInt(btn.dataset.amount);
+    S.selectedUnit = btn.dataset.unit;
+    S.selectedResolvedAt = null;
+    updateResolvedPreview();
+  });
+});
+
+// Custom-duration inputs
+document.getElementById('duration-amount').addEventListener('input', e => {
+  const val = parseInt(e.target.value);
+  if (val > 0) {
+    S.selectedAmount = val;
+    S.selectedUnit = document.getElementById('duration-unit').value;
+    S.selectedResolvedAt = null;
+  } else {
+    S.selectedAmount = null;
+    S.selectedUnit = null;
+  }
+  updateResolvedPreview();
+});
+
+document.getElementById('duration-unit').addEventListener('change', e => {
+  if (S.selectedAmount) {
+    S.selectedUnit = e.target.value;
+    updateResolvedPreview();
+  }
+});
+
+// Exact date/time input
+document.getElementById('exact-datetime').addEventListener('input', e => {
+  const val = e.target.value;
+  if (!val) {
+    S.selectedResolvedAt = null;
+  } else {
+    const parsed = new Date(val).getTime();
+    if (!isNaN(parsed)) {
+      S.selectedResolvedAt = parsed;
+      S.selectedAmount = null;
+      S.selectedUnit = null;
+    } else {
+      S.selectedResolvedAt = null;
+    }
+  }
+  updateResolvedPreview();
+});
+
+// Save: build anxiety with whichever resolution was chosen
+document.getElementById('btn-save').addEventListener('click', () => {
+  if (!S.pendingPos) return;
+  const resolvedAt = currentResolvedAt();
+  if (!resolvedAt || resolvedAt <= nowMs()) return;
+  const createdAt = nowMs();
+  const anxiety = {
+    id: 'a_' + createdAt + '_' + Math.random().toString(36).slice(2,7),
+    lat: S.pendingPos.lat,
+    lng: S.pendingPos.lng,
+    createdAt,
+    resolvedAt,
+  };
+  S.anxieties.push(anxiety);
+  persist();
+  // Reload to use the working refresh path
+  window.location.reload();
+});
+</script>
+</body>
+</html>
