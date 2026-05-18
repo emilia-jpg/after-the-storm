@@ -32,7 +32,7 @@ html,body{height:100%;font-family:Georgia,serif;font-size:15px;color:var(--text)
 #three-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 
 .time-scrub{
-  position:absolute;top:16px;left:50%;transform:translateX(-50%);
+  position:absolute;top:64px;left:50%;transform:translateX(-50%);
   background:rgba(34,37,44,.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
   border:1px solid var(--border);border-radius:18px;padding:10px 16px;
   display:flex;flex-direction:column;gap:6px;
@@ -109,6 +109,77 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
 .btn-primary:active:not(:disabled){transform:scale(.98)}
 .btn-primary:disabled{opacity:.4;cursor:not-allowed}
 
+/* ── Map toggle (top-right of main screen) ── */
+.map-toggle{
+  position:absolute;top:16px;right:16px;z-index:500;
+  display:flex;background:rgba(34,37,44,.85);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--border);border-radius:100px;padding:3px;
+  font-family:system-ui,sans-serif;
+}
+.map-toggle button{
+  background:none;border:none;color:var(--text-m);
+  padding:7px 14px;border-radius:100px;cursor:pointer;
+  font-family:system-ui,sans-serif;font-size:12px;
+  transition:background .2s,color .2s;
+}
+.map-toggle button.active{background:var(--accent);color:var(--night);font-weight:600}
+
+/* ── Settings button (bottom-left of main screen) ── */
+.settings-btn{
+  position:absolute;left:16px;top:16px;z-index:500;
+  width:36px;height:36px;border-radius:50%;
+  background:rgba(34,37,44,.85);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--border);
+  color:var(--text-m);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:color .2s,background .2s;
+}
+.settings-btn:hover{background:rgba(95,184,154,.2);color:var(--text)}
+
+/* ── Modal (consent + info) ── */
+.modal-backdrop{
+  position:fixed;inset:0;background:rgba(24,26,31,.85);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  z-index:1000;display:none;align-items:center;justify-content:center;padding:20px;
+}
+.modal-backdrop.active{display:flex}
+.modal{
+  background:var(--night-2);border:1px solid var(--border);
+  border-radius:20px;padding:28px;max-width:520px;width:100%;
+  font-family:system-ui,sans-serif;color:var(--text);
+  max-height:90vh;overflow-y:auto;
+}
+.modal h2{font-family:Georgia,serif;font-size:22px;font-weight:700;letter-spacing:-.4px;margin-bottom:14px;color:var(--text)}
+.modal-section{margin-bottom:24px;font-size:14px;line-height:1.65;color:var(--text-m)}
+.modal-section:last-of-type{margin-bottom:0}
+.modal-section h3{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-f);margin-bottom:10px}
+.modal-info-placeholder{
+  background:var(--night-3);border:1px dashed var(--border);
+  border-radius:var(--r);padding:14px;color:var(--text-f);font-style:italic;font-size:13px;
+}
+.consent-row{
+  display:flex;gap:12px;align-items:flex-start;
+  padding:14px;background:var(--night-3);border:1px solid var(--border);
+  border-radius:var(--r);cursor:pointer;
+}
+.consent-row input[type="checkbox"]{
+  width:20px;height:20px;flex-shrink:0;cursor:pointer;margin-top:1px;
+  accent-color:var(--accent);
+}
+.consent-row label{cursor:pointer;font-size:14px;color:var(--text);line-height:1.55}
+.consent-row label .small{display:block;color:var(--text-m);font-size:12px;margin-top:4px}
+.modal-actions{display:flex;gap:10px;margin-top:24px}
+.modal-actions button{flex:1}
+.btn-secondary{
+  padding:14px;background:transparent;color:var(--text-m);
+  border:1px solid var(--border);border-radius:var(--r);
+  font-family:system-ui,sans-serif;font-size:14px;cursor:pointer;
+  transition:background .2s,color .2s;
+}
+.btn-secondary:hover{background:var(--night-3);color:var(--text)}
+
 /* ── TOAST ── */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(16px);background:var(--night-3);color:var(--text);border:1px solid var(--border);border-radius:100px;padding:11px 20px;font-size:13px;font-weight:500;opacity:0;transition:opacity .3s,transform .3s;z-index:9999;pointer-events:none;white-space:nowrap;font-family:system-ui,sans-serif}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -119,6 +190,13 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
 <!-- ── MAIN 3D ── -->
 <div id="screen-main" class="screen active">
   <canvas id="three-canvas"></canvas>
+  <button class="settings-btn" id="settings-btn" title="Settings">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  </button>
+  <div class="map-toggle">
+    <button id="map-mine" class="active">My map</button>
+    <button id="map-shared">Shared map</button>
+  </div>
   <div class="time-scrub" id="time-scrub">
     <div class="time-scrub-row">
       <span class="time-label" id="time-label">Now</span>
@@ -198,6 +276,40 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
   </div>
 </div>
 
+<!-- ── Modal: consent + about ── -->
+<div class="modal-backdrop" id="modal-backdrop">
+  <div class="modal">
+    <h2 id="modal-title">Welcome to Anchor</h2>
+
+    <div class="modal-section">
+      <h3>About this project</h3>
+      <div class="modal-info-placeholder">
+        Project information will go here. Brief explanation of what Anchor is,
+        why it exists, and how it works.
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <h3>Sharing</h3>
+      <p style="margin-bottom:12px">Your anxieties are saved on your device by default. If you choose to share,
+        they're added to a collective map where everyone can see them. No names, no exact
+        locations, no times — just rough places and durations.</p>
+      <div class="consent-row" id="consent-row">
+        <input type="checkbox" id="consent-checkbox"/>
+        <label for="consent-checkbox">
+          Share my anxieties anonymously
+          <span class="small">Coordinates rounded to ~100m, time truncated to the hour, no identifier stored.</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-secondary" id="modal-cancel" style="display:none">Cancel</button>
+      <button class="btn-primary" id="modal-confirm">Continue</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -208,27 +320,125 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
+// ── Supabase config ────────────────────────────────────────────
+// Replace these two values with your project's URL and anon key.
+// They're safe to put in client-side code: Row Level Security
+// in the database controls what they can do.
+const SUPABASE_URL = 'https://jpgotzihotnifhldjqpa.supabase.co';        // e.g. https://xxxxx.supabase.co
+const SUPABASE_ANON_KEY = 'YeyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwZ290emlob3RuaWZobGRqcXBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMDY1NjAsImV4cCI6MjA5NDY4MjU2MH0.vTt4SPjE4op9plhlAhDjnwsB29ENeQHPf75w7cxLeYU';
+
+// True when both config values are set to something real
+const SUPABASE_CONFIGURED =
+  SUPABASE_URL && !SUPABASE_URL.includes('YOUR_') &&
+  SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.includes('YOUR_');
+
+// ── Supabase REST helpers ──────────────────────────────────────
+// We make raw fetch calls to the auto-generated PostgREST API instead of
+// pulling in the @supabase/supabase-js library — saves a dependency.
+
+async function supabaseInsertAnxiety(lat, lng, resolvedAt) {
+  if (!SUPABASE_CONFIGURED) return;
+  // Client-side rounding too (defence in depth — server enforces too)
+  const safeLat = Math.round(lat * 1000) / 1000;
+  const safeLng = Math.round(lng * 1000) / 1000;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/anxieties`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal',
+      },
+      body: JSON.stringify({
+        lat: safeLat,
+        lng: safeLng,
+        resolved_at: new Date(resolvedAt).toISOString(),
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.warn('Supabase insert failed:', res.status, text);
+    }
+  } catch (err) {
+    console.warn('Supabase insert error:', err);
+  }
+}
+
+async function supabaseFetchAnxieties() {
+  if (!SUPABASE_CONFIGURED) return [];
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/anxieties?select=lat,lng,created_at,resolved_at&order=created_at.desc&limit=2000`, {
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+    });
+    if (!res.ok) {
+      console.warn('Supabase fetch failed:', res.status);
+      return [];
+    }
+    const data = await res.json();
+    // Map to the same shape as personal anxieties
+    return data.map((row, i) => ({
+      id: 'shared_' + i,
+      lat: parseFloat(row.lat),
+      lng: parseFloat(row.lng),
+      createdAt: new Date(row.created_at).getTime(),
+      resolvedAt: new Date(row.resolved_at).getTime(),
+    }));
+  } catch (err) {
+    console.warn('Supabase fetch error:', err);
+    return [];
+  }
+}
+
 // ── State ──────────────────────────────────────────────────────
 // Each anxiety: {
 //   id, lat, lng, createdAt (ms), resolvedAt (ms)
 // }
 const S = {
-  anxieties: [],
+  // Personal anxieties (from localStorage) and shared anxieties (fetched from Supabase)
+  anxieties: [],          // these are the user's own — always saved locally
+  sharedAnxieties: [],    // pulled from Supabase, refreshed on mode change
+
+  // Which dataset the map currently visualises: 'mine' | 'shared'
+  mapMode: 'mine',
+
+  // Whether the user has agreed to share their anxieties to the collective map.
+  // Stored in localStorage as 'anchor-consent' = 'yes' | 'no'.
+  shareConsent: false,
+  hasOnboarded: false,    // true after first modal close
+
   currentPos: null,
   watchId: null,
   // Time-scrub: simOffset is in milliseconds, ≤ 0.
   // simNow = realNow + simOffset. At simOffset=0, we're viewing the present.
-  // Negative values let you scrub backward into the past.
   simOffset: 0,
   // Log screen state
   pendingPos: null,
   selectedAmount: null,
   selectedUnit: null,
-  selectedResolvedAt: null,  // set directly by the exact-date input; takes precedence
-  currentMode: 'quick',      // 'quick' | 'custom' | 'exact'
+  selectedResolvedAt: null,
+  currentMode: 'quick',
 };
 
-// ── Persist ────────────────────────────────────────────────────
+// ── Settings persistence (consent + onboarding flag) ───────────
+function persistSettings() {
+  localStorage.setItem('anchor-settings', JSON.stringify({
+    shareConsent: S.shareConsent,
+    hasOnboarded: S.hasOnboarded,
+  }));
+}
+function hydrateSettings() {
+  try {
+    const d = JSON.parse(localStorage.getItem('anchor-settings') || '{}');
+    S.shareConsent = !!d.shareConsent;
+    S.hasOnboarded = !!d.hasOnboarded;
+  } catch {}
+}
+
+// ── Personal data persistence ──────────────────────────────────
 function persist() {
   localStorage.setItem('anchor-v2', JSON.stringify({ anxieties: S.anxieties }));
 }
@@ -411,6 +621,10 @@ function projectToScene(lat, lng) {
 // Deform the plane mesh so each active anxiety raises a smooth Gaussian peak
 // at its location, with the peak's height = the remaining time until resolution.
 // Overlapping peaks add together, naturally forming ridges/merged tents.
+function activeDataset() {
+  return S.mapMode === 'shared' ? S.sharedAnxieties : S.anxieties;
+}
+
 function deformPlane() {
   if (!plane || !S.currentPos) return;
   const simNow = nowMs() + S.simOffset;
@@ -422,7 +636,7 @@ function deformPlane() {
   //   - It had been created by the simulated "now" (createdAt <= simNow)
   //   - Its resolvedAt is still in the future relative to simNow
   const peaks = [];
-  for (const a of S.anxieties) {
+  for (const a of activeDataset()) {
     if (a.createdAt > simNow) continue;             // didn't exist yet at this point
     const remainingMs = a.resolvedAt - simNow;
     if (remainingMs <= 0) continue;                 // already resolved at this point
@@ -502,10 +716,9 @@ function updateTimeUI() {
 // History bounds — derived from the earliest anxiety we have. Returns a
 // millisecond timestamp representing how far back the slider can scrub.
 function getHistoryStartMs() {
-  if (S.anxieties.length === 0) return nowMs(); // no data → no past
-  // Earliest createdAt across all anxieties, then back off slightly so
-  // you can see the moment right BEFORE that first peak appeared.
-  const minCreated = Math.min(...S.anxieties.map(a => a.createdAt));
+  const data = activeDataset();
+  if (data.length === 0) return nowMs(); // no data → no past
+  const minCreated = Math.min(...data.map(a => a.createdAt));
   return minCreated - 60 * 60 * 1000;  // 1 hour before earliest
 }
 
@@ -727,7 +940,7 @@ document.getElementById('exact-datetime').addEventListener('input', e => {
 });
 
 // Save: build anxiety with whichever resolution was chosen
-document.getElementById('btn-save').addEventListener('click', () => {
+document.getElementById('btn-save').addEventListener('click', async () => {
   if (!S.pendingPos) return;
   const resolvedAt = currentResolvedAt();
   if (!resolvedAt || resolvedAt <= nowMs()) return;
@@ -741,9 +954,77 @@ document.getElementById('btn-save').addEventListener('click', () => {
   };
   S.anxieties.push(anxiety);
   persist();
+
+  // If the user has consented to sharing, also push to the collective map.
+  // We don't await this — we don't want a slow network to delay the reload.
+  if (S.shareConsent) {
+    supabaseInsertAnxiety(anxiety.lat, anxiety.lng, anxiety.resolvedAt);
+  }
+
   // Reload to use the working refresh path
   window.location.reload();
 });
+
+// ── Modal: consent + about ─────────────────────────────────────
+function openModal(isOnboarding) {
+  document.getElementById('modal-backdrop').classList.add('active');
+  document.getElementById('consent-checkbox').checked = S.shareConsent;
+  document.getElementById('modal-title').textContent =
+    isOnboarding ? 'Welcome to Anchor' : 'Settings';
+  document.getElementById('modal-cancel').style.display = isOnboarding ? 'none' : '';
+  document.getElementById('modal-confirm').textContent = isOnboarding ? 'Continue' : 'Save';
+}
+function closeModal() {
+  document.getElementById('modal-backdrop').classList.add('closing');
+  document.getElementById('modal-backdrop').classList.remove('active');
+}
+
+document.getElementById('settings-btn').addEventListener('click', () => {
+  openModal(false);
+});
+document.getElementById('modal-cancel').addEventListener('click', () => {
+  closeModal();
+});
+document.getElementById('modal-confirm').addEventListener('click', () => {
+  S.shareConsent = document.getElementById('consent-checkbox').checked;
+  S.hasOnboarded = true;
+  persistSettings();
+  closeModal();
+});
+
+// ── Map toggle: My / Shared ────────────────────────────────────
+async function setMapMode(mode) {
+  S.mapMode = mode;
+  document.getElementById('map-mine').classList.toggle('active', mode === 'mine');
+  document.getElementById('map-shared').classList.toggle('active', mode === 'shared');
+  if (mode === 'shared' && S.sharedAnxieties.length === 0) {
+    if (!SUPABASE_CONFIGURED) {
+      toast('Shared map not configured yet');
+      return;
+    }
+    toast('Loading shared map…');
+    S.sharedAnxieties = await supabaseFetchAnxieties();
+    if (S.sharedAnxieties.length === 0) {
+      toast('No shared anxieties yet — be the first!');
+    } else {
+      toast(`Showing ${S.sharedAnxieties.length} shared anxieties`);
+    }
+  }
+  // Reset scrub to "now" when switching modes (history bounds change)
+  S.simOffset = 0;
+  document.getElementById('time-slider').value = 1000;
+  deformPlane();
+  updateTimeUI();
+}
+document.getElementById('map-mine').addEventListener('click', () => setMapMode('mine'));
+document.getElementById('map-shared').addEventListener('click', () => setMapMode('shared'));
+
+// ── First-launch onboarding ────────────────────────────────────
+hydrateSettings();
+if (!S.hasOnboarded) {
+  // Show modal once everything else has rendered
+  setTimeout(() => openModal(true), 200);
+}
 </script>
 </body>
 </html>
