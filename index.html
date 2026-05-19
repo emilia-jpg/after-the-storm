@@ -499,7 +499,8 @@ function fmtCoord(lat, lng) {
 
 // ── Three.js scene ─────────────────────────────────────────────
 let renderer, scene, camera, controls, composer;
-let plane;                           // the deformable "present" plane
+let plane;                           // detail (close-up) deformable plane
+let farPlane;                        // wider, lower-detail background plane
 
 // World units:
 //   1 horizontal unit = ~3 metres of physical space (so a 1km area = ~333 units)
@@ -546,12 +547,10 @@ function initThree() {
 
   // ── The deformable present plane ────────────────────────────
   // The plane is high-res so vertices can be pushed up into peaks.
-  // Width/height match the world coordinate range; segments determine
-  // smoothness of the deformation.
+  // ── Detail plane (close-up, your immediate area) ─────────
   const PLANE_SIZE = 1200;           // 1200 world units across (~3.6km)
-  const PLANE_SEGMENTS = 120;        // 120x120 vertices = smooth peaks (lighter than 160)
+  const PLANE_SEGMENTS = 120;        // 120x120 vertices
   const planeGeo = new THREE.PlaneGeometry(PLANE_SIZE, PLANE_SIZE, PLANE_SEGMENTS, PLANE_SEGMENTS);
-  // Store the original (flat) positions so we can rebuild deformation each frame
   planeGeo.userData.originalPositions = planeGeo.attributes.position.array.slice();
 
   const planeMat = new THREE.MeshStandardMaterial({
@@ -571,8 +570,6 @@ function initThree() {
   plane.position.y = 0;
   scene.add(plane);
 
-  // Wireframe grid that conforms to the deformed plane.
-  // Built as a LineSegments object from the same geometry so it bends with it.
   const wireGeo = new THREE.WireframeGeometry(planeGeo);
   const wireMat = new THREE.LineBasicMaterial({
     color: 0x000000,
@@ -581,8 +578,48 @@ function initThree() {
   });
   const wireframe = new THREE.LineSegments(wireGeo, wireMat);
   plane.add(wireframe);
-  // Store reference so we can update it when the plane deforms
   plane.userData.wireframe = wireframe;
+  plane.userData.size = PLANE_SIZE;
+  plane.userData.segments = PLANE_SEGMENTS;
+
+  // ── Far plane (the wider Vienna-scale view, lower detail) ────
+  // Sits behind the detail plane at a slightly lower Y so they don't z-fight.
+  // It's dimmer and slightly translucent so the detail plane reads as
+  // the focused foreground.
+  const FAR_SIZE = 8000;             // ~24km across
+  const FAR_SEGMENTS = 120;          // 120x120 vertices — coarse but acceptable
+  const farGeo = new THREE.PlaneGeometry(FAR_SIZE, FAR_SIZE, FAR_SEGMENTS, FAR_SEGMENTS);
+  farGeo.userData.originalPositions = farGeo.attributes.position.array.slice();
+
+  const farMat = new THREE.MeshStandardMaterial({
+    color: 0xe0e0d8,                 // slightly off-white so it sits behind visually
+    emissive: 0xe0e0d8,
+    emissiveIntensity: 0.06,         // dimmer than detail plane
+    toneMapped: false,
+    transparent: true,
+    opacity: 0.85,
+    roughness: 1.0,
+    metalness: 0,
+    side: THREE.DoubleSide,
+  });
+  farPlane = new THREE.Mesh(farGeo, farMat);
+  farPlane.rotation.x = -Math.PI / 2;
+  farPlane.position.y = -0.8;        // slightly below the detail plane
+  scene.add(farPlane);
+
+  // Sparser wireframe on the far plane — use a custom dotted grid instead
+  // of all edges to keep it readable at distance.
+  const farWireGeo = new THREE.WireframeGeometry(farGeo);
+  const farWireMat = new THREE.LineBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0.08,
+  });
+  const farWire = new THREE.LineSegments(farWireGeo, farWireMat);
+  farPlane.add(farWire);
+  farPlane.userData.wireframe = farWire;
+  farPlane.userData.size = FAR_SIZE;
+  farPlane.userData.segments = FAR_SEGMENTS;
 
   // ── Post-processing ────────────────────────────────────────
   composer = new EffectComposer(renderer);
@@ -628,54 +665,62 @@ function activeDataset() {
 function deformPlane() {
   if (!plane || !S.currentPos) return;
   const simNow = nowMs() + S.simOffset;
-  const geo = plane.geometry;
+
+  // Collect all active anxieties as peak descriptors (no plane-specific stuff yet).
+  // We'll build sigma per-plane below since the far plane needs much wider peaks.
+  const allPeaks = [];
+  for (const a of activeDataset()) {
+    if (a.createdAt > simNow) continue;
+    const remainingMs = a.resolvedAt - simNow;
+    if (remainingMs <= 0) continue;
+    const { x, z } = projectToScene(a.lat, a.lng);
+    const HEIGHT_TAU_MS = 30 * 60 * 1000;
+    const HEIGHT_K = 7;
+    const height = HEIGHT_K * Math.log(1 + remainingMs / HEIGHT_TAU_MS);
+    // Distance from user (origin) in plane units
+    const distFromOrigin = Math.hypot(x, z);
+    allPeaks.push({ x, z, height, distFromOrigin });
+  }
+
+  // Detail plane: only peaks within ~600 units of origin (your local area).
+  // Sigma stays the soft "wave" size from before.
+  const detailPeaks = [];
+  for (const p of allPeaks) {
+    if (p.distFromOrigin > 600) continue;
+    const sigma = Math.max(20, Math.min(70, 18 + p.height * 0.6));
+    detailPeaks.push({ x: p.x, z: p.z, height: p.height, twoSigmaSq: 2 * sigma * sigma });
+  }
+  applyDeformation(plane, detailPeaks);
+
+  // Far plane: ALL peaks (including the near ones), but with much wider sigma
+  // since each vertex covers a larger area (~40m vs ~10m on the detail plane).
+  // Wider sigma also makes the far plane read as a smoother, hazier landscape.
+  const farPeaks = [];
+  for (const p of allPeaks) {
+    // Heights on the far plane are slightly damped so the foreground stays
+    // visually dominant (we don't want a distant 5-year peak to overshadow
+    // your immediate peaks)
+    const farHeight = p.height * 0.65;
+    const sigma = Math.max(60, Math.min(180, 50 + farHeight * 1.4));
+    farPeaks.push({ x: p.x, z: p.z, height: farHeight, twoSigmaSq: 2 * sigma * sigma });
+  }
+  if (farPlane) applyDeformation(farPlane, farPeaks);
+}
+
+// Apply a list of Gaussian peaks to a plane's geometry, modifying vertices
+// in place. Also rebuilds the wireframe overlay if one is attached.
+function applyDeformation(planeMesh, peaks) {
+  const geo = planeMesh.geometry;
   const positions = geo.attributes.position;
   const original = geo.userData.originalPositions;
 
-  // Build a list of active peaks. An anxiety contributes a peak only if:
-  //   - It had been created by the simulated "now" (createdAt <= simNow)
-  //   - Its resolvedAt is still in the future relative to simNow
-  const peaks = [];
-  for (const a of activeDataset()) {
-    if (a.createdAt > simNow) continue;             // didn't exist yet at this point
-    const remainingMs = a.resolvedAt - simNow;
-    if (remainingMs <= 0) continue;                 // already resolved at this point
-    const { x, z } = projectToScene(a.lat, a.lng);
-
-    // Logarithmic height mapping: the axis becomes denser as you go up,
-    // so short anxieties (1 hour, 1 day) get a visibly meaningful peak
-    // while long ones (years) are compressed instead of shooting off.
-    // Roughly:
-    //   1 hour       → ~8
-    //   1 day        → ~13
-    //   1 week       → ~21
-    //   1 month      → ~30
-    //   1 year       → ~47
-    //   5 years      → ~64
-    const HEIGHT_TAU_MS = 30 * 60 * 1000; // 30 minutes — scale factor for the log
-    const HEIGHT_K = 7;
-    const height = HEIGHT_K * Math.log(1 + remainingMs / HEIGHT_TAU_MS);
-
-    // Wider, lower-inclined sigma — peaks become soft waves instead of sharp cones.
-    // Slight growth with height so the very tall ones spread enough not to pinch.
-    const sigma = Math.max(20, Math.min(70, 18 + height * 0.6));
-    peaks.push({ x, z, height, twoSigmaSq: 2 * sigma * sigma });
-  }
-
-  // For each vertex of the plane geometry, sum the Gaussian contributions
-  // from all active peaks and write the result to the Z component
-  // (PlaneGeometry vertices live in XY; Z becomes height after the rotation).
-  // We iterate over (x, y) from the original buffer to keep the flat baseline
-  // stable regardless of how many deformations we've applied.
   for (let i = 0; i < positions.count; i++) {
     const ox = original[i*3];
     const oy = original[i*3 + 1];
-    // Plane is rotated -PI/2 around X axis, so plane's local (x, y) maps to
-    // world (x, z) — and a positive local Z lifts the vertex into world +Y.
     let h = 0;
     for (const p of peaks) {
       const dx = ox - p.x;
-      const dy = oy - (-p.z);  // we used z = -dLat earlier; in plane-local y, peak is at -z_world
+      const dy = oy - (-p.z);  // peak's z_world maps to -y in plane-local
       const distSq = dx*dx + dy*dy;
       h += p.height * Math.exp(-distSq / p.twoSigmaSq);
     }
@@ -686,9 +731,8 @@ function deformPlane() {
   positions.needsUpdate = true;
   geo.computeVertexNormals();
 
-  // Rebuild the wireframe so it follows the deformation
-  if (plane.userData.wireframe) {
-    const wf = plane.userData.wireframe;
+  if (planeMesh.userData.wireframe) {
+    const wf = planeMesh.userData.wireframe;
     wf.geometry.dispose();
     wf.geometry = new THREE.WireframeGeometry(geo);
   }
