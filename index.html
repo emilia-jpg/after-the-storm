@@ -838,93 +838,197 @@ function activeDataset() {
   return S.mapMode === 'shared' ? S.sharedAnxieties : S.anxieties;
 }
 
-function deformPlane() {
-  if (!plane || !S.currentPos) return;
-  const simNow = nowMs() + S.simOffset;
+// ── Column system ──────────────────────────────────────────────
+// Each anxiety becomes one cylindrical column. Its full length =
+// log-mapped duration (so a 1-hour anxiety is short, a 5-year one is
+// noticeably tall but not absurd). Its colour gradient runs along the
+// column from warm-near to cool-far in time. As real time passes, the
+// column sinks downward through the present plane (y=0): the portion above
+// the plane is the "future" of that anxiety, the portion below is "past."
+//
+// Past-portion appearance: a hard cut at y=0 — full colour above,
+// desaturated grey below (handled in the column's shader).
 
-  // Collect all active anxieties as peak descriptors.
-  // Every peak uses the SAME sigma/height regardless of which plane it
-  // happens to fall on — this is what keeps the deformation continuous
-  // across the seam between the disc and the annulus.
-  const peaks = [];
-  for (const a of activeDataset()) {
-    if (a.createdAt > simNow) continue;
-    const remainingMs = a.resolvedAt - simNow;
-    if (remainingMs <= 0) continue;
-    const { x, z } = projectToScene(a.lat, a.lng);
-    const HEIGHT_TAU_MS = 30 * 60 * 1000;
-    const HEIGHT_K = 7;
-    const height = HEIGHT_K * Math.log(1 + remainingMs / HEIGHT_TAU_MS);
-    // Sigma scaled so peaks are clearly distinct even at ~100m apart.
-    // Shape is preserved (same relative proportions across durations), just
-    // smaller in absolute units.
-    const sigma = Math.max(12, Math.min(70, 8 + height * 0.7));
-    peaks.push({ x, z, height, twoSigmaSq: 2 * sigma * sigma });
-  }
-
-  // Both planes receive ALL peaks, identically. Each plane's vertices
-  // only deform where they geometrically exist — but a peak located on
-  // the disc still raises vertices just across the seam on the far plane,
-  // because the Gaussian falloff extends past the disc's edge.
-  applyDeformation(plane, peaks);
-  if (farPlane) applyDeformation(farPlane, peaks);
+// Logarithmic height mapping in world units. Same formula as the old
+// plane deformation, so durations read at the same visual scale they did.
+function columnFullHeight(durationMs) {
+  const HEIGHT_TAU_MS = 30 * 60 * 1000;
+  const HEIGHT_K = 7;
+  return HEIGHT_K * Math.log(1 + durationMs / HEIGHT_TAU_MS);
 }
 
-// Apply a list of Gaussian peaks to a plane's geometry, modifying vertices
-// in place. Handles both standard PlaneGeometry (vertices in XY, Z = height)
-// and custom annular geometry (vertices in XZ, Y = height).
-function applyDeformation(planeMesh, peaks) {
-  const geo = planeMesh.geometry;
+// Time-position colour gradient (offset in ms from now to the column's bottom).
+// Anchors: 0 amber, 1h orange, 1d coral, 1w magenta, 1mo periwinkle, 1y sage, 5y deep teal.
+const TIME_STOPS = [
+  { ms: 0,                              color: new THREE.Color('#f9b13a') },
+  { ms: 60 * 60 * 1000,                 color: new THREE.Color('#f48a3a') },
+  { ms: 24 * 60 * 60 * 1000,            color: new THREE.Color('#e2588a') },
+  { ms: 7 * 24 * 60 * 60 * 1000,        color: new THREE.Color('#b566c4') },
+  { ms: 30 * 24 * 60 * 60 * 1000,       color: new THREE.Color('#7e6dd1') },
+  { ms: 365 * 24 * 60 * 60 * 1000,      color: new THREE.Color('#5fb89a') },
+  { ms: 5 * 365 * 24 * 60 * 60 * 1000,  color: new THREE.Color('#1e7060') },
+];
+function timeGradientColor(tMs) {
+  if (tMs <= TIME_STOPS[0].ms) return TIME_STOPS[0].color;
+  for (let i = 0; i < TIME_STOPS.length - 1; i++) {
+    const a = TIME_STOPS[i], b = TIME_STOPS[i+1];
+    if (tMs <= b.ms) {
+      const logA = Math.log(Math.max(1, a.ms));
+      const logB = Math.log(b.ms);
+      const logT = Math.log(Math.max(1, tMs));
+      const t = (logT - logA) / (logB - logA);
+      return a.color.clone().lerp(b.color, Math.max(0, Math.min(1, t)));
+    }
+  }
+  return TIME_STOPS[TIME_STOPS.length - 1].color;
+}
+
+// Deterministic small offset per anxiety so multiple columns at the same
+// place fan out into a visible cluster instead of stacking exactly.
+function clusterOffset(id) {
+  // FNV-1a-ish: produce two pseudo-random floats from the id string
+  let h1 = 2166136261, h2 = 0x9e3779b1;
+  for (let i = 0; i < id.length; i++) {
+    h1 ^= id.charCodeAt(i); h1 = Math.imul(h1, 16777619);
+    h2 ^= id.charCodeAt(i); h2 = Math.imul(h2, 2654435769);
+  }
+  const a = ((h1 >>> 0) / 4294967295) * Math.PI * 2;   // angle
+  const r = ((h2 >>> 0) / 4294967295) * 2.5;            // radius up to 2.5 units (~1.5m)
+  return { dx: Math.cos(a) * r, dz: Math.sin(a) * r };
+}
+
+// Build a single column mesh for an anxiety.
+function makeColumn(anxiety) {
+  const totalMs = anxiety.resolvedAt - anxiety.createdAt;
+  const totalHeight = Math.max(0.5, columnFullHeight(totalMs));
+
+  const radius = 0.7;
+  const geo = new THREE.CylinderGeometry(radius, radius, totalHeight, 24, 32, false);
+  // Pivot so origin is at the BOTTOM of the cylinder (createdAt time)
+  geo.translate(0, totalHeight / 2, 0);
+
+  // Per-vertex colours along the height: bottom = createdAt offset,
+  // top = resolvedAt offset (from now). We bake the colours assuming
+  // "now" is the column's createdAt — i.e. local y maps to time-from-creation.
+  // The dimming-past effect uses world Y in the shader, so the gradient stays
+  // baked while the column physically sinks.
   const positions = geo.attributes.position;
-  const original = geo.userData.originalPositions;
-  const isAnnular = !!planeMesh.userData.isAnnular;
-
+  const colors = new Float32Array(positions.count * 3);
   for (let i = 0; i < positions.count; i++) {
-    let worldX, worldZ;
-    if (isAnnular) {
-      // Annular: original positions are already (x, 0, z) in world space
-      worldX = original[i*3];
-      worldZ = original[i*3 + 2];
-    } else {
-      // PlaneGeometry rotated -PI/2 around X: local (x, y) → world (x, -y)
-      worldX = original[i*3];
-      worldZ = -original[i*3 + 1];
-    }
-
-    let h = 0;
-    for (const p of peaks) {
-      const dx = worldX - p.x;
-      const dz = worldZ - p.z;
-      const distSq = dx*dx + dz*dz;
-      h += p.height * Math.exp(-distSq / p.twoSigmaSq);
-    }
-
-    if (isAnnular) {
-      // Annular: write height into world Y (the geometry's Y component)
-      positions.setX(i, original[i*3]);
-      positions.setY(i, h);
-      positions.setZ(i, original[i*3 + 2]);
-    } else {
-      // PlaneGeometry: write height into local Z (becomes world Y after rotation)
-      positions.setX(i, original[i*3]);
-      positions.setY(i, original[i*3 + 1]);
-      positions.setZ(i, h);
-    }
+    const yLocal = positions.getY(i);          // 0 .. totalHeight
+    const tMs = (yLocal / totalHeight) * totalMs;
+    const c = timeGradientColor(tMs);
+    colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
   }
-  positions.needsUpdate = true;
-  geo.computeVertexNormals();
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-  if (planeMesh.userData.wireframe && planeMesh.userData.wireframe.visible) {
-    const wf = planeMesh.userData.wireframe;
-    wf.geometry.dispose();
-    wf.geometry = new THREE.WireframeGeometry(geo);
+  const mat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    emissive: 0xffffff,
+    emissiveIntensity: 0.0,
+    toneMapped: false,
+    roughness: 1.0,
+    metalness: 0,
+    side: THREE.FrontSide,
+  });
+  // Shader injection: hard cut at world Y = 0. Above = bright vertex colour,
+  // below = flat grey (the "past archive" look from before).
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <common>',
+      `#include <common>
+       varying float vWorldY;`
+    ).replace(
+      '#include <project_vertex>',
+      `vWorldY = (modelMatrix * vec4(transformed, 1.0)).y;
+       #include <project_vertex>`
+    );
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <common>',
+      `#include <common>
+       varying float vWorldY;`
+    ).replace(
+      '#include <emissivemap_fragment>',
+      `float above = step(0.0, vWorldY);
+       totalEmissiveRadiance += vColor * (0.7 * above);`
+    ).replace(
+      '#include <dithering_fragment>',
+      `float above2 = step(0.0, vWorldY);
+       vec3 pastGrey = vec3(0.55);
+       gl_FragColor.rgb = mix(pastGrey, gl_FragColor.rgb, above2);
+       #include <dithering_fragment>`
+    );
+  };
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.userData = {
+    anxietyId: anxiety.id,
+    totalHeight,
+    createdAt: anxiety.createdAt,
+    resolvedAt: anxiety.resolvedAt,
+  };
+  return mesh;
+}
+
+// State for active column meshes
+const columnMeshes = new Map();   // anxiety.id → mesh
+
+// Rebuild all columns from scratch based on the active dataset.
+// Call this whenever the data set changes (mode toggle, new anxiety, etc.).
+function rebuildColumns() {
+  // Dispose old
+  for (const m of columnMeshes.values()) {
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) m.material.dispose();
+    scene.remove(m);
   }
+  columnMeshes.clear();
+
+  if (!S.currentPos) return;
+
+  for (const a of activeDataset()) {
+    const col = makeColumn(a);
+    const { x, z } = projectToScene(a.lat, a.lng);
+    const off = clusterOffset(a.id);
+    col.position.x = x + off.dx;
+    col.position.z = z + off.dz;
+    scene.add(col);
+    columnMeshes.set(a.id, col);
+  }
+  updateColumnPositions();
+}
+
+// Per-tick update: just set each column's Y based on simNow.
+// The cylinder geometry has its bottom at local Y=0, so the column's
+// Y position IS where the bottom (createdAt time) sits in world space.
+//
+// As simNow advances past createdAt, the bottom y decreases (sinks),
+// and once simNow passes resolvedAt the top also drops below 0.
+function updateColumnPositions() {
+  const simNow = nowMs() + S.simOffset;
+  for (const m of columnMeshes.values()) {
+    const ud = m.userData;
+    // Hide columns whose anxiety hasn't been created yet (relative to simNow).
+    // This makes sense when scrubbing back: anxieties logged later just aren't
+    // visible.
+    if (ud.createdAt > simNow) { m.visible = false; continue; }
+    m.visible = true;
+    // Bottom (createdAt) y in world space = (createdAt - simNow) / MS_PER_UNIT_V.
+    // At simNow == createdAt, bottom is at y=0 (the present plane).
+    // After that, the column sinks (bottom y goes negative).
+    m.position.y = (ud.createdAt - simNow) / MS_PER_UNIT_V;
+  }
+}
+
+// Backwards-compat alias: anywhere old code called deformPlane(), it now
+// just refreshes the columns' vertical position. Data-set changes need
+// to call rebuildColumns() explicitly.
+function deformPlane() {
+  updateColumnPositions();
 }
 
 function rebuildScene() {
-  // Nothing per-anxiety to build any more — the deformation IS the scene.
-  // Just trigger an update.
-  deformPlane();
+  rebuildColumns();
 }
 
 let lastNowUpdate = 0;
@@ -994,11 +1098,12 @@ function startWatch() {
       S.currentPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
       console.log('GPS fix:', S.currentPos.lat.toFixed(5), S.currentPos.lng.toFixed(5),
         '±' + Math.round(pos.coords.accuracy) + 'm');
-      // Any time our position changes meaningfully, recompute the scene
+      // First fix, or position moved meaningfully → rebuild columns
+      // (their positions are computed relative to S.currentPos)
       if (!prev ||
           Math.abs(prev.lat - S.currentPos.lat) > 0.00001 ||
           Math.abs(prev.lng - S.currentPos.lng) > 0.00001) {
-        deformPlane();
+        rebuildColumns();
       }
     },
     err => {
@@ -1260,7 +1365,7 @@ async function setMapMode(mode) {
   // Reset scrub to "now" when switching modes (history bounds change)
   S.simOffset = 0;
   document.getElementById('time-slider').value = 1000;
-  deformPlane();
+  rebuildColumns();
   updateTimeUI();
 }
 document.getElementById('map-mine').addEventListener('click', () => setMapMode('mine'));
