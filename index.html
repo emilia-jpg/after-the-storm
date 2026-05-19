@@ -508,6 +508,103 @@ let farPlane;                        // wider, lower-detail background plane
 const METRES_PER_UNIT_H = 3;
 const MS_PER_UNIT_V = 24 * 60 * 60 * 1000;
 
+// Build a flat annular ring geometry, meshed in polar coordinates.
+// The resulting BufferGeometry lives in the XZ plane (Y = 0 = flat),
+// with vertices arranged in `radialSegments+1` rings × `angularSegments`
+// columns. Each cell is two triangles.
+//
+// Why polar? It gives a clean inner boundary (a perfect circle) where the
+// hole is, no jagged squares poking into the detail plane.
+function buildAnnularPlaneGeometry(innerR, outerR, radialSegments, angularSegments) {
+  const positions = [];
+  const indices = [];
+
+  // Vertices laid out in (ring, column) order. ring goes 0..radialSegments,
+  // column goes 0..angularSegments-1.
+  for (let r = 0; r <= radialSegments; r++) {
+    const t = r / radialSegments;
+    const radius = innerR + (outerR - innerR) * t;
+    for (let c = 0; c < angularSegments; c++) {
+      const a = (c / angularSegments) * Math.PI * 2;
+      const x = Math.cos(a) * radius;
+      const z = Math.sin(a) * radius;
+      positions.push(x, 0, z);
+    }
+  }
+
+  // Two triangles per (ring, column) cell. Columns wrap around.
+  for (let r = 0; r < radialSegments; r++) {
+    for (let c = 0; c < angularSegments; c++) {
+      const cNext = (c + 1) % angularSegments;
+      const a = r * angularSegments + c;
+      const b = r * angularSegments + cNext;
+      const d = (r + 1) * angularSegments + c;
+      const e = (r + 1) * angularSegments + cNext;
+      // Triangle 1: a, d, b
+      indices.push(a, d, b);
+      // Triangle 2: b, d, e
+      indices.push(b, d, e);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// Build a flat disc geometry, also in polar coordinates (in XZ).
+// A single centre vertex is connected by a triangle fan to the first ring;
+// after that it's the same ring × column meshing as the annulus.
+function buildDiscGeometry(outerR, radialSegments, angularSegments) {
+  const positions = [];
+  const indices = [];
+
+  // Vertex 0 is the centre
+  positions.push(0, 0, 0);
+
+  // Rings from r=1 (innermost) to r=radialSegments (outermost)
+  for (let r = 1; r <= radialSegments; r++) {
+    const t = r / radialSegments;
+    const radius = outerR * t;
+    for (let c = 0; c < angularSegments; c++) {
+      const a = (c / angularSegments) * Math.PI * 2;
+      const x = Math.cos(a) * radius;
+      const z = Math.sin(a) * radius;
+      positions.push(x, 0, z);
+    }
+  }
+
+  // Helper: index of vertex at (ring r, column c). ring 0 is the centre.
+  // For r >= 1, index = 1 + (r-1)*angularSegments + c
+  const idx = (r, c) => r === 0 ? 0 : 1 + (r - 1) * angularSegments + (c % angularSegments);
+
+  // Triangle fan from centre to first ring
+  for (let c = 0; c < angularSegments; c++) {
+    const cNext = (c + 1) % angularSegments;
+    indices.push(idx(0, 0), idx(1, c), idx(1, cNext));
+  }
+  // Two triangles per (ring, column) cell for outer rings
+  for (let r = 1; r < radialSegments; r++) {
+    for (let c = 0; c < angularSegments; c++) {
+      const cNext = (c + 1) % angularSegments;
+      const a = idx(r, c);
+      const b = idx(r, cNext);
+      const d = idx(r + 1, c);
+      const e = idx(r + 1, cNext);
+      indices.push(a, d, b);
+      indices.push(b, d, e);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 function initThree() {
   if (renderer) return;
   const canvas = document.getElementById('three-canvas');
@@ -545,12 +642,13 @@ function initThree() {
   fill.position.set(-30, 40, -20);
   scene.add(fill);
 
-  // ── The deformable present plane ────────────────────────────
-  // The plane is high-res so vertices can be pushed up into peaks.
-  // ── Detail plane (close-up, your immediate area) ─────────
-  const PLANE_SIZE = 1200;           // 1200 world units across (~3.6km)
-  const PLANE_SEGMENTS = 120;        // 120x120 vertices
-  const planeGeo = new THREE.PlaneGeometry(PLANE_SIZE, PLANE_SIZE, PLANE_SEGMENTS, PLANE_SEGMENTS);
+  // ── Detail plane (disc-shaped, close-up of your immediate area) ─────
+  // Built as a disc with the same outer radius as the annulus' inner radius,
+  // so the two seams line up perfectly.
+  const DETAIL_OUTER = 860;          // matches FAR_INNER below
+  const DETAIL_RADIAL = 60;          // 60 rings × 160 columns ≈ 9600 vertices
+  const DETAIL_ANGULAR = 160;        // (matches the annulus' angular resolution)
+  const planeGeo = buildDiscGeometry(DETAIL_OUTER, DETAIL_RADIAL, DETAIL_ANGULAR);
   planeGeo.userData.originalPositions = planeGeo.attributes.position.array.slice();
 
   const planeMat = new THREE.MeshStandardMaterial({
@@ -566,7 +664,7 @@ function initThree() {
     flatShading: false,
   });
   plane = new THREE.Mesh(planeGeo, planeMat);
-  plane.rotation.x = -Math.PI / 2;
+  // Disc is already in XZ — no rotation needed.
   plane.position.y = 0;
   scene.add(plane);
 
@@ -574,21 +672,25 @@ function initThree() {
   const wireMat = new THREE.LineBasicMaterial({
     color: 0x000000,
     transparent: true,
-    opacity: 0.25,
+    opacity: 0,
   });
   const wireframe = new THREE.LineSegments(wireGeo, wireMat);
+  wireframe.visible = false;
   plane.add(wireframe);
   plane.userData.wireframe = wireframe;
-  plane.userData.size = PLANE_SIZE;
-  plane.userData.segments = PLANE_SEGMENTS;
+  plane.userData.isAnnular = true;   // same vertex layout as the annulus (XZ, Y = height)
 
-  // ── Far plane (the wider Vienna-scale view, lower detail) ────
-  // Sits behind the detail plane at a slightly lower Y so they don't z-fight.
-  // It's dimmer and slightly translucent so the detail plane reads as
-  // the focused foreground.
-  const FAR_SIZE = 8000;             // ~24km across
-  const FAR_SEGMENTS = 120;          // 120x120 vertices — coarse but acceptable
-  const farGeo = new THREE.PlaneGeometry(FAR_SIZE, FAR_SIZE, FAR_SEGMENTS, FAR_SEGMENTS);
+  // ── Far plane (the wider Vienna-scale view) ──────────────────
+  // Built as an actual annulus (ring shape) so it has a real geometric hole
+  // where the detail plane sits — no overlap, no inset, no z-fighting.
+  // We mesh it as a polar grid (radial × angular) so it can still deform
+  // with Gaussian peaks.
+  const FAR_INNER = 860;             // covers the detail plane's corners (half-diagonal ~849)
+  const FAR_OUTER = 4000;            // ~12km outer radius → ~24km diameter
+  const FAR_RADIAL = 70;             // rings of vertices radially
+  const FAR_ANGULAR = 160;           // segments around the circle
+
+  const farGeo = buildAnnularPlaneGeometry(FAR_INNER, FAR_OUTER, FAR_RADIAL, FAR_ANGULAR);
   farGeo.userData.originalPositions = farGeo.attributes.position.array.slice();
 
   const farMat = new THREE.MeshStandardMaterial({
@@ -603,28 +705,23 @@ function initThree() {
     side: THREE.DoubleSide,
   });
   farPlane = new THREE.Mesh(farGeo, farMat);
-  farPlane.rotation.x = -Math.PI / 2;
-  farPlane.position.y = -0.5;        // slightly below detail plane to avoid z-fight at the seam
+  // The annular geometry already lives in the XZ plane (with Y for height),
+  // so no rotation is needed.
+  farPlane.position.y = 0;
   scene.add(farPlane);
 
-  // Sparser wireframe on the far plane — use a custom dotted grid instead
-  // of all edges to keep it readable at distance.
   const farWireGeo = new THREE.WireframeGeometry(farGeo);
   const farWireMat = new THREE.LineBasicMaterial({
     color: 0x000000,
     transparent: true,
-    opacity: 0.25,
+    opacity: 0,
   });
   const farWire = new THREE.LineSegments(farWireGeo, farWireMat);
+  farWire.visible = false;
   farPlane.add(farWire);
   farPlane.userData.wireframe = farWire;
-  farPlane.userData.size = FAR_SIZE;
-  farPlane.userData.segments = FAR_SEGMENTS;
-  // Hollow out the far plane where the detail plane sits. The detail plane
-  // is 1200×1200; its half-diagonal is ~850. We use a hole radius slightly
-  // bigger than that so the detail plane fully covers the hole + fade ring.
-  farPlane.userData.holeRadius = 900;
-  farPlane.userData.holeFade = 200;
+  farPlane.userData.isAnnular = true;
+  farPlane.userData.innerRadius = FAR_INNER;
 
   // ── Post-processing ────────────────────────────────────────
   composer = new EffectComposer(renderer);
@@ -687,21 +784,21 @@ function deformPlane() {
     allPeaks.push({ x, z, height, distFromOrigin });
   }
 
-  // Detail plane: only peaks within ~600 units of origin (your local area).
-  // Sigma stays the soft "wave" size from before.
+  // Detail plane: peaks within the disc's radius. (Peaks outside that
+  // are handled by the far annulus.)
   const detailPeaks = [];
   for (const p of allPeaks) {
-    if (p.distFromOrigin > 600) continue;
+    if (p.distFromOrigin > 860) continue;
     const sigma = Math.max(20, Math.min(70, 18 + p.height * 0.6));
     detailPeaks.push({ x: p.x, z: p.z, height: p.height, twoSigmaSq: 2 * sigma * sigma });
   }
   applyDeformation(plane, detailPeaks);
 
-  // Far plane: only peaks OUTSIDE the far plane's hole. Peaks inside the
-  // hole are hidden anyway, so skipping them saves work.
+  // Far plane: only peaks OUTSIDE the annulus inner radius. The far plane
+  // simply doesn't exist within the detail plane's footprint.
   const farPeaks = [];
   for (const p of allPeaks) {
-    if (p.distFromOrigin <= 900) continue;
+    if (p.distFromOrigin <= 860) continue;
     // Heights damped so the foreground stays visually dominant.
     const farHeight = p.height * 0.65;
     const sigma = Math.max(60, Math.min(180, 50 + farHeight * 1.4));
@@ -711,52 +808,50 @@ function deformPlane() {
 }
 
 // Apply a list of Gaussian peaks to a plane's geometry, modifying vertices
-// in place. Also rebuilds the wireframe overlay if one is attached.
-// If the plane has a `holeRadius` set in userData, vertices inside that
-// radius are pushed far down (out of view) — used to hollow out the far
-// plane where the detail plane sits on top of it.
+// in place. Handles both standard PlaneGeometry (vertices in XY, Z = height)
+// and custom annular geometry (vertices in XZ, Y = height).
 function applyDeformation(planeMesh, peaks) {
   const geo = planeMesh.geometry;
   const positions = geo.attributes.position;
   const original = geo.userData.originalPositions;
-  const holeRadius = planeMesh.userData.holeRadius || 0;
-  const holeFade = planeMesh.userData.holeFade || 0;
+  const isAnnular = !!planeMesh.userData.isAnnular;
 
   for (let i = 0; i < positions.count; i++) {
-    const ox = original[i*3];
-    const oy = original[i*3 + 1];
+    let worldX, worldZ;
+    if (isAnnular) {
+      // Annular: original positions are already (x, 0, z) in world space
+      worldX = original[i*3];
+      worldZ = original[i*3 + 2];
+    } else {
+      // PlaneGeometry rotated -PI/2 around X: local (x, y) → world (x, -y)
+      worldX = original[i*3];
+      worldZ = -original[i*3 + 1];
+    }
 
     let h = 0;
     for (const p of peaks) {
-      const dx = ox - p.x;
-      const dy = oy - (-p.z);
-      const distSq = dx*dx + dy*dy;
+      const dx = worldX - p.x;
+      const dz = worldZ - p.z;
+      const distSq = dx*dx + dz*dz;
       h += p.height * Math.exp(-distSq / p.twoSigmaSq);
     }
 
-    // Apply hole: vertices inside holeRadius drop out of view; vertices
-    // in the fade ring transition smoothly from "deep down" to the normal height.
-    if (holeRadius > 0) {
-      const distFromOrigin = Math.sqrt(ox*ox + oy*oy);
-      if (distFromOrigin < holeRadius) {
-        // Inside the full hole — push way down out of camera view
-        h = -200;
-      } else if (distFromOrigin < holeRadius + holeFade) {
-        // In the fade ring — interpolate from "deep below" to the computed peak height
-        const t = (distFromOrigin - holeRadius) / holeFade;
-        const smoothT = t * t * (3 - 2 * t); // smoothstep
-        h = h * smoothT + (-200) * (1 - smoothT);
-      }
+    if (isAnnular) {
+      // Annular: write height into world Y (the geometry's Y component)
+      positions.setX(i, original[i*3]);
+      positions.setY(i, h);
+      positions.setZ(i, original[i*3 + 2]);
+    } else {
+      // PlaneGeometry: write height into local Z (becomes world Y after rotation)
+      positions.setX(i, original[i*3]);
+      positions.setY(i, original[i*3 + 1]);
+      positions.setZ(i, h);
     }
-
-    positions.setX(i, ox);
-    positions.setY(i, oy);
-    positions.setZ(i, h);
   }
   positions.needsUpdate = true;
   geo.computeVertexNormals();
 
-  if (planeMesh.userData.wireframe) {
+  if (planeMesh.userData.wireframe && planeMesh.userData.wireframe.visible) {
     const wf = planeMesh.userData.wireframe;
     wf.geometry.dispose();
     wf.geometry = new THREE.WireframeGeometry(geo);
