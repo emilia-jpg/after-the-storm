@@ -640,12 +640,25 @@ function deformPlane() {
     if (a.createdAt > simNow) continue;             // didn't exist yet at this point
     const remainingMs = a.resolvedAt - simNow;
     if (remainingMs <= 0) continue;                 // already resolved at this point
-    const remainingDays = remainingMs / MS_PER_UNIT_V;
     const { x, z } = projectToScene(a.lat, a.lng);
-    const height = remainingDays;
-    // Sigma scaled up because the plane is now ~4× wider — small peaks
-    // need a slightly larger footprint to register on the coarser vertex grid.
-    const sigma = Math.max(8, Math.min(40, 6 + height * 0.5));
+
+    // Logarithmic height mapping: the axis becomes denser as you go up,
+    // so short anxieties (1 hour, 1 day) get a visibly meaningful peak
+    // while long ones (years) are compressed instead of shooting off.
+    // Roughly:
+    //   1 hour       → ~8
+    //   1 day        → ~13
+    //   1 week       → ~21
+    //   1 month      → ~30
+    //   1 year       → ~47
+    //   5 years      → ~64
+    const HEIGHT_TAU_MS = 30 * 60 * 1000; // 30 minutes — scale factor for the log
+    const HEIGHT_K = 7;
+    const height = HEIGHT_K * Math.log(1 + remainingMs / HEIGHT_TAU_MS);
+
+    // Wider, lower-inclined sigma — peaks become soft waves instead of sharp cones.
+    // Slight growth with height so the very tall ones spread enough not to pinch.
+    const sigma = Math.max(20, Math.min(70, 18 + height * 0.6));
     peaks.push({ x, z, height, twoSigmaSq: 2 * sigma * sigma });
   }
 
