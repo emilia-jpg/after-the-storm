@@ -651,10 +651,13 @@ function applyGridShader(material, cellSize, lineWidth, lineColor) {
        uniform vec3 uGridColor;`
     ).replace(
       '#include <dithering_fragment>',
-      `// World-space grid (faithful to the original: lines where min(g.x, g.y) < threshold)
+      `// World-space grid: white lines on transparent surface.
+       // gl_FragColor.a is set to 1.0 on lines, 0.0 in the gaps so the
+       // surface effectively disappears between lines.
        vec2 g = fract(vGridXZ / uGridCell);
        float onLine = step(min(g.x, g.y), uGridLine);
-       gl_FragColor.rgb = mix(gl_FragColor.rgb, uGridColor, onLine);
+       gl_FragColor.rgb = uGridColor;
+       gl_FragColor.a = onLine;
        #include <dithering_fragment>`
     );
     if (shader.fragmentShader === fBefore) {
@@ -720,15 +723,16 @@ function initThree() {
     emissive: 0xffffff,
     emissiveIntensity: 0.03,
     toneMapped: false,
-    transparent: false,
+    transparent: true,
     opacity: 1.0,
     roughness: 1.0,
     metalness: 0,
     side: THREE.DoubleSide,
     flatShading: false,
+    depthWrite: false,
   });
-  // World-space grid: 40-unit cells (~120m), 5% line width, black lines on white
-  applyGridShader(planeMat, 40, 0.05, new THREE.Color(0x000000));
+  // White grid lines on transparent surface: 40-unit cells (~120m), 5% line width
+  applyGridShader(planeMat, 40, 0.05, new THREE.Color(0xffffff));
   plane = new THREE.Mesh(planeGeo, planeMat);
   // Disc is already in XZ — no rotation needed.
   plane.position.y = 0;
@@ -764,15 +768,16 @@ function initThree() {
     emissive: 0xffffff,
     emissiveIntensity: 0.03,
     toneMapped: false,
-    transparent: false,
+    transparent: true,
     opacity: 1.0,
     roughness: 1.0,
     metalness: 0,
     side: THREE.DoubleSide,
+    depthWrite: false,
   });
   // Same world-space grid as the disc — identical cell size + offset
   // means the lines line up exactly across the seam.
-  applyGridShader(farMat, 40, 0.05, new THREE.Color(0x000000));
+  applyGridShader(farMat, 40, 0.05, new THREE.Color(0xffffff));
   farPlane = new THREE.Mesh(farGeo, farMat);
   // The annular geometry already lives in the XZ plane (with Y for height),
   // so no rotation is needed.
