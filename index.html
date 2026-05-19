@@ -772,9 +772,11 @@ function deformPlane() {
   if (!plane || !S.currentPos) return;
   const simNow = nowMs() + S.simOffset;
 
-  // Collect all active anxieties as peak descriptors (no plane-specific stuff yet).
-  // We'll build sigma per-plane below since the far plane needs much wider peaks.
-  const allPeaks = [];
+  // Collect all active anxieties as peak descriptors.
+  // Every peak uses the SAME sigma/height regardless of which plane it
+  // happens to fall on — this is what keeps the deformation continuous
+  // across the seam between the disc and the annulus.
+  const peaks = [];
   for (const a of activeDataset()) {
     if (a.createdAt > simNow) continue;
     const remainingMs = a.resolvedAt - simNow;
@@ -783,32 +785,18 @@ function deformPlane() {
     const HEIGHT_TAU_MS = 30 * 60 * 1000;
     const HEIGHT_K = 7;
     const height = HEIGHT_K * Math.log(1 + remainingMs / HEIGHT_TAU_MS);
-    // Distance from user (origin) in plane units
-    const distFromOrigin = Math.hypot(x, z);
-    allPeaks.push({ x, z, height, distFromOrigin });
+    // Sigma scales meaningfully with height, so short anxieties produce
+    // tight bumps and long ones spread into wider waves.
+    const sigma = Math.max(8, Math.min(90, 4 + height * 1.3));
+    peaks.push({ x, z, height, twoSigmaSq: 2 * sigma * sigma });
   }
 
-  // Detail plane: peaks within the disc's radius. (Peaks outside that
-  // are handled by the far annulus.)
-  const detailPeaks = [];
-  for (const p of allPeaks) {
-    if (p.distFromOrigin > 860) continue;
-    const sigma = Math.max(20, Math.min(70, 18 + p.height * 0.6));
-    detailPeaks.push({ x: p.x, z: p.z, height: p.height, twoSigmaSq: 2 * sigma * sigma });
-  }
-  applyDeformation(plane, detailPeaks);
-
-  // Far plane: only peaks OUTSIDE the annulus inner radius. The far plane
-  // simply doesn't exist within the detail plane's footprint.
-  const farPeaks = [];
-  for (const p of allPeaks) {
-    if (p.distFromOrigin <= 860) continue;
-    // Heights damped so the foreground stays visually dominant.
-    const farHeight = p.height * 0.65;
-    const sigma = Math.max(60, Math.min(180, 50 + farHeight * 1.4));
-    farPeaks.push({ x: p.x, z: p.z, height: farHeight, twoSigmaSq: 2 * sigma * sigma });
-  }
-  if (farPlane) applyDeformation(farPlane, farPeaks);
+  // Both planes receive ALL peaks, identically. Each plane's vertices
+  // only deform where they geometrically exist — but a peak located on
+  // the disc still raises vertices just across the seam on the far plane,
+  // because the Gaussian falloff extends past the disc's edge.
+  applyDeformation(plane, peaks);
+  if (farPlane) applyDeformation(farPlane, peaks);
 }
 
 // Apply a list of Gaussian peaks to a plane's geometry, modifying vertices
