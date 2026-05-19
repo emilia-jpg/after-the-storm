@@ -605,6 +605,66 @@ function buildDiscGeometry(outerR, radialSegments, angularSegments) {
   return geo;
 }
 
+// Add a world-space grid pattern to a MeshStandardMaterial. The grid is
+// evaluated in the surface's XZ world position, so it stays glued to the
+// "ground" as the camera moves and lines up seamlessly across separate meshes
+// regardless of how each mesh is internally tessellated.
+//
+// Adapted from the original Shadertoy-style grid:
+//     vec2 g = fract(uv * 10.0);
+//     col = min(g.x, g.y) < 0.05 ? 1 : 0;
+// but using world XZ as the coordinate and configurable cell size + line width.
+function applyGridShader(material, cellSize, lineWidth, lineColor) {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uGridCell = { value: cellSize };
+    shader.uniforms.uGridLine = { value: lineWidth };
+    shader.uniforms.uGridColor = { value: lineColor };
+
+    // Vertex: pass world XZ to the fragment shader.
+    // We inject at project_vertex (which always runs) and compute the
+    // world position ourselves rather than relying on worldpos_vertex,
+    // which is only included conditionally.
+    const vBefore = shader.vertexShader;
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <common>',
+      `#include <common>
+       varying vec2 vGridXZ;`
+    ).replace(
+      '#include <project_vertex>',
+      `vGridXZ = (modelMatrix * vec4(transformed, 1.0)).xz;
+       #include <project_vertex>`
+    );
+    if (shader.vertexShader === vBefore) {
+      console.warn('grid shader: vertex injection failed — no replacements made');
+    }
+
+    // Fragment: tint gl_FragColor toward the line colour on grid lines.
+    // We inject before <dithering_fragment>, which runs near the end of the
+    // shader after gl_FragColor has been assembled but before tonemapping.
+    const fBefore = shader.fragmentShader;
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <common>',
+      `#include <common>
+       varying vec2 vGridXZ;
+       uniform float uGridCell;
+       uniform float uGridLine;
+       uniform vec3 uGridColor;`
+    ).replace(
+      '#include <dithering_fragment>',
+      `// World-space grid (faithful to the original: lines where min(g.x, g.y) < threshold)
+       vec2 g = fract(vGridXZ / uGridCell);
+       float onLine = step(min(g.x, g.y), uGridLine);
+       gl_FragColor.rgb = mix(gl_FragColor.rgb, uGridColor, onLine);
+       #include <dithering_fragment>`
+    );
+    if (shader.fragmentShader === fBefore) {
+      console.warn('grid shader: fragment injection failed — no replacements made');
+    }
+  };
+  // Important: tell Three.js the shader needs recompiling
+  material.needsUpdate = true;
+}
+
 function initThree() {
   if (renderer) return;
   const canvas = document.getElementById('three-canvas');
@@ -667,6 +727,8 @@ function initThree() {
     side: THREE.DoubleSide,
     flatShading: false,
   });
+  // World-space grid: 40-unit cells (~120m), 5% line width, black lines on white
+  applyGridShader(planeMat, 40, 0.05, new THREE.Color(0x000000));
   plane = new THREE.Mesh(planeGeo, planeMat);
   // Disc is already in XZ — no rotation needed.
   plane.position.y = 0;
@@ -708,6 +770,9 @@ function initThree() {
     metalness: 0,
     side: THREE.DoubleSide,
   });
+  // Same world-space grid as the disc — identical cell size + offset
+  // means the lines line up exactly across the seam.
+  applyGridShader(farMat, 40, 0.05, new THREE.Color(0x000000));
   farPlane = new THREE.Mesh(farGeo, farMat);
   // The annular geometry already lives in the XZ plane (with Y for height),
   // so no rotation is needed.
