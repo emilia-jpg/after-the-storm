@@ -989,14 +989,18 @@ function startWatch() {
   }
   S.watchId = navigator.geolocation.watchPosition(
     pos => {
+      const prev = S.currentPos;
       S.currentPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-      // Any time our position changes, the deformation needs to be recomputed
-      // (peaks are placed relative to the user's current location).
-      deformPlane();
+      console.log('GPS fix:', S.currentPos.lat.toFixed(5), S.currentPos.lng.toFixed(5),
+        '±' + Math.round(pos.coords.accuracy) + 'm');
+      // Any time our position changes meaningfully, recompute the scene
+      if (!prev ||
+          Math.abs(prev.lat - S.currentPos.lat) > 0.00001 ||
+          Math.abs(prev.lng - S.currentPos.lng) > 0.00001) {
+        deformPlane();
+      }
     },
     err => {
-      // GeolocationPositionError has codes:
-      // 1 = permission denied, 2 = position unavailable, 3 = timeout
       const messages = {
         1: 'Location permission denied',
         2: 'Location unavailable right now',
@@ -1005,7 +1009,8 @@ function startWatch() {
       console.warn('Geolocation error:', err.code, err.message);
       toast(messages[err.code] || 'Location error');
     },
-    { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 }
+    // maximumAge: 0 → never use a cached position; always wait for a fresh fix
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
   );
 }
 
