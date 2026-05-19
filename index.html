@@ -634,12 +634,16 @@ function initThree() {
   controls.maxPolarAngle = Math.PI * 0.49;
   controls.target.set(0, 20, 0);
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.25));
-  const sun = new THREE.DirectionalLight(0xffffff, 0.5);
-  sun.position.set(40, 80, 30);
+  // Lighting: low-angled key light from one side gives bumps a clear
+  // bright/shadowed contrast. Ambient is kept very low so shadows are pronounced;
+  // a faint cool fill from the opposite side prevents the dark sides from
+  // turning to pure black.
+  scene.add(new THREE.AmbientLight(0xffffff, 0.12));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+  sun.position.set(120, 25, 60);   // low and to the side — long shadows
   scene.add(sun);
-  const fill = new THREE.DirectionalLight(0xfff2dc, 0.2);
-  fill.position.set(-30, 40, -20);
+  const fill = new THREE.DirectionalLight(0xb0c4d8, 0.18);
+  fill.position.set(-80, 30, -40);
   scene.add(fill);
 
   // ── Detail plane (disc-shaped, close-up of your immediate area) ─────
@@ -654,7 +658,7 @@ function initThree() {
   const planeMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     emissive: 0xffffff,
-    emissiveIntensity: 0.12,
+    emissiveIntensity: 0.03,
     toneMapped: false,
     transparent: false,
     opacity: 1.0,
@@ -696,7 +700,7 @@ function initThree() {
   const farMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     emissive: 0xffffff,
-    emissiveIntensity: 0.12,
+    emissiveIntensity: 0.03,
     toneMapped: false,
     transparent: false,
     opacity: 1.0,
