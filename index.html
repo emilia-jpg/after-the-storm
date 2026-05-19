@@ -522,7 +522,7 @@ function initThree() {
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x181a1f);
-  scene.fog = new THREE.Fog(0x181a1f, 600, 2400);
+  scene.fog = new THREE.Fog(0x181a1f, 2000, 6000);
 
   camera = new THREE.PerspectiveCamera(45, w0/h0, 0.1, 8000);
   camera.position.set(80, 120, 130);
@@ -592,19 +592,19 @@ function initThree() {
   farGeo.userData.originalPositions = farGeo.attributes.position.array.slice();
 
   const farMat = new THREE.MeshStandardMaterial({
-    color: 0xe0e0d8,                 // slightly off-white so it sits behind visually
-    emissive: 0xe0e0d8,
-    emissiveIntensity: 0.06,         // dimmer than detail plane
+    color: 0xffffff,
+    emissive: 0xffffff,
+    emissiveIntensity: 0.12,
     toneMapped: false,
-    transparent: true,
-    opacity: 0.85,
+    transparent: false,
+    opacity: 1.0,
     roughness: 1.0,
     metalness: 0,
     side: THREE.DoubleSide,
   });
   farPlane = new THREE.Mesh(farGeo, farMat);
   farPlane.rotation.x = -Math.PI / 2;
-  farPlane.position.y = -0.8;        // slightly below the detail plane
+  farPlane.position.y = 0;
   scene.add(farPlane);
 
   // Sparser wireframe on the far plane — use a custom dotted grid instead
@@ -613,13 +613,18 @@ function initThree() {
   const farWireMat = new THREE.LineBasicMaterial({
     color: 0x000000,
     transparent: true,
-    opacity: 0.08,
+    opacity: 0.25,
   });
   const farWire = new THREE.LineSegments(farWireGeo, farWireMat);
   farPlane.add(farWire);
   farPlane.userData.wireframe = farWire;
   farPlane.userData.size = FAR_SIZE;
   farPlane.userData.segments = FAR_SEGMENTS;
+  // Detail plane is 1200 wide → its visible radius is ~600. We hollow out
+  // the far plane within this radius so the two don't visually compete.
+  // The hole has a soft fade-out edge so the transition isn't jarring.
+  farPlane.userData.holeRadius = 600;
+  farPlane.userData.holeFade = 150;
 
   // ── Post-processing ────────────────────────────────────────
   composer = new EffectComposer(renderer);
@@ -692,14 +697,12 @@ function deformPlane() {
   }
   applyDeformation(plane, detailPeaks);
 
-  // Far plane: ALL peaks (including the near ones), but with much wider sigma
-  // since each vertex covers a larger area (~40m vs ~10m on the detail plane).
-  // Wider sigma also makes the far plane read as a smoother, hazier landscape.
+  // Far plane: only peaks OUTSIDE the detail plane's footprint. The hole
+  // in the centre would hide near peaks anyway, but skipping them saves work.
   const farPeaks = [];
   for (const p of allPeaks) {
-    // Heights on the far plane are slightly damped so the foreground stays
-    // visually dominant (we don't want a distant 5-year peak to overshadow
-    // your immediate peaks)
+    if (p.distFromOrigin <= 600) continue;
+    // Heights damped so the foreground stays visually dominant.
     const farHeight = p.height * 0.65;
     const sigma = Math.max(60, Math.min(180, 50 + farHeight * 1.4));
     farPeaks.push({ x: p.x, z: p.z, height: farHeight, twoSigmaSq: 2 * sigma * sigma });
@@ -709,21 +712,43 @@ function deformPlane() {
 
 // Apply a list of Gaussian peaks to a plane's geometry, modifying vertices
 // in place. Also rebuilds the wireframe overlay if one is attached.
+// If the plane has a `holeRadius` set in userData, vertices inside that
+// radius are pushed far down (out of view) — used to hollow out the far
+// plane where the detail plane sits on top of it.
 function applyDeformation(planeMesh, peaks) {
   const geo = planeMesh.geometry;
   const positions = geo.attributes.position;
   const original = geo.userData.originalPositions;
+  const holeRadius = planeMesh.userData.holeRadius || 0;
+  const holeFade = planeMesh.userData.holeFade || 0;
 
   for (let i = 0; i < positions.count; i++) {
     const ox = original[i*3];
     const oy = original[i*3 + 1];
+
     let h = 0;
     for (const p of peaks) {
       const dx = ox - p.x;
-      const dy = oy - (-p.z);  // peak's z_world maps to -y in plane-local
+      const dy = oy - (-p.z);
       const distSq = dx*dx + dy*dy;
       h += p.height * Math.exp(-distSq / p.twoSigmaSq);
     }
+
+    // Apply hole: vertices inside holeRadius drop out of view; vertices
+    // in the fade ring transition smoothly from "deep down" to the normal height.
+    if (holeRadius > 0) {
+      const distFromOrigin = Math.sqrt(ox*ox + oy*oy);
+      if (distFromOrigin < holeRadius) {
+        // Inside the full hole — push way down out of camera view
+        h = -200;
+      } else if (distFromOrigin < holeRadius + holeFade) {
+        // In the fade ring — interpolate from "deep below" to the computed peak height
+        const t = (distFromOrigin - holeRadius) / holeFade;
+        const smoothT = t * t * (3 - 2 * t); // smoothstep
+        h = h * smoothT + (-200) * (1 - smoothT);
+      }
+    }
+
     positions.setX(i, ox);
     positions.setY(i, oy);
     positions.setZ(i, h);
