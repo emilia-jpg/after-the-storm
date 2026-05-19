@@ -604,7 +604,7 @@ function initThree() {
   });
   farPlane = new THREE.Mesh(farGeo, farMat);
   farPlane.rotation.x = -Math.PI / 2;
-  farPlane.position.y = 0;
+  farPlane.position.y = -0.5;        // slightly below detail plane to avoid z-fight at the seam
   scene.add(farPlane);
 
   // Sparser wireframe on the far plane — use a custom dotted grid instead
@@ -620,11 +620,11 @@ function initThree() {
   farPlane.userData.wireframe = farWire;
   farPlane.userData.size = FAR_SIZE;
   farPlane.userData.segments = FAR_SEGMENTS;
-  // Detail plane is 1200 wide → its visible radius is ~600. We hollow out
-  // the far plane within this radius so the two don't visually compete.
-  // The hole has a soft fade-out edge so the transition isn't jarring.
-  farPlane.userData.holeRadius = 600;
-  farPlane.userData.holeFade = 150;
+  // Hollow out the far plane where the detail plane sits. The detail plane
+  // is 1200×1200; its half-diagonal is ~850. We use a hole radius slightly
+  // bigger than that so the detail plane fully covers the hole + fade ring.
+  farPlane.userData.holeRadius = 900;
+  farPlane.userData.holeFade = 200;
 
   // ── Post-processing ────────────────────────────────────────
   composer = new EffectComposer(renderer);
@@ -697,11 +697,11 @@ function deformPlane() {
   }
   applyDeformation(plane, detailPeaks);
 
-  // Far plane: only peaks OUTSIDE the detail plane's footprint. The hole
-  // in the centre would hide near peaks anyway, but skipping them saves work.
+  // Far plane: only peaks OUTSIDE the far plane's hole. Peaks inside the
+  // hole are hidden anyway, so skipping them saves work.
   const farPeaks = [];
   for (const p of allPeaks) {
-    if (p.distFromOrigin <= 600) continue;
+    if (p.distFromOrigin <= 900) continue;
     // Heights damped so the foreground stays visually dominant.
     const farHeight = p.height * 0.65;
     const sigma = Math.max(60, Math.min(180, 50 + farHeight * 1.4));
