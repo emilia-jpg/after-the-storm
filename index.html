@@ -732,7 +732,7 @@ function initThree() {
     depthWrite: false,
   });
   // White grid lines on transparent surface: 40-unit cells (~120m), 5% line width
-  applyGridShader(planeMat, 15, 0.05, new THREE.Color(0xffffff));
+  applyGridShader(planeMat, 3.33, 0.05, new THREE.Color(0xffffff));
   plane = new THREE.Mesh(planeGeo, planeMat);
   // Disc is already in XZ — no rotation needed.
   plane.position.y = 0;
@@ -777,7 +777,7 @@ function initThree() {
   });
   // Same world-space grid as the disc — identical cell size + offset
   // means the lines line up exactly across the seam.
-  applyGridShader(farMat, 15, 0.05, new THREE.Color(0xffffff));
+  applyGridShader(farMat, 3.33, 0.05, new THREE.Color(0xffffff));
   farPlane = new THREE.Mesh(farGeo, farMat);
   // The annular geometry already lives in the XZ plane (with Y for height),
   // so no rotation is needed.
