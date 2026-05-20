@@ -180,6 +180,21 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
 }
 .btn-secondary:hover{background:var(--night-3);color:var(--text)}
 
+/* ── Reflection options ── */
+.reflect-options{display:flex;flex-direction:column;gap:10px}
+.reflect-option{
+  display:flex;align-items:center;gap:14px;
+  padding:14px 16px;background:var(--night-3);border:1px solid var(--border);
+  border-radius:var(--r);color:var(--text);font-family:system-ui,sans-serif;font-size:15px;
+  cursor:pointer;text-align:left;transition:background .2s,border-color .2s,transform .1s;
+}
+.reflect-option:hover{background:#363a44;border-color:rgba(255,255,255,.2)}
+.reflect-option:active{transform:scale(.98)}
+.reflect-swatch{
+  width:22px;height:22px;border-radius:50%;flex-shrink:0;
+  box-shadow:0 0 0 1px rgba(255,255,255,.15) inset;
+}
+
 /* ── TOAST ── */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(16px);background:var(--night-3);color:var(--text);border:1px solid var(--border);border-radius:100px;padding:11px 20px;font-size:13px;font-weight:500;opacity:0;transition:opacity .3s,transform .3s;z-index:9999;pointer-events:none;white-space:nowrap;font-family:system-ui,sans-serif}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -306,6 +321,33 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
     <div class="modal-actions">
       <button class="btn-secondary" id="modal-cancel" style="display:none">Cancel</button>
       <button class="btn-primary" id="modal-confirm">Continue</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="reflect-backdrop">
+  <div class="modal">
+    <h2>Looking back</h2>
+    <p style="font-size:14px;color:var(--text-m);line-height:1.6;margin-bottom:6px">You once stood here and felt anxious about something to come. Now that it's behind you — how did it actually turn out compared to what you anticipated?</p>
+    <p style="font-size:13px;color:var(--text-f);line-height:1.6;margin-bottom:20px;font-style:italic">There's no right answer. The point is honest reflection, not a positive tally.</p>
+
+    <div class="reflect-options">
+      <button class="reflect-option" data-value="better">
+        <span class="reflect-swatch" style="background:#5fb89a"></span>
+        <span>Better than I expected</span>
+      </button>
+      <button class="reflect-option" data-value="same">
+        <span class="reflect-swatch" style="background:#e6c947"></span>
+        <span>About what I expected</span>
+      </button>
+      <button class="reflect-option" data-value="harder">
+        <span class="reflect-swatch" style="background:#3a4a7e"></span>
+        <span>Harder than I expected</span>
+      </button>
+    </div>
+
+    <div class="modal-actions" style="margin-top:18px">
+      <button class="btn-secondary" id="reflect-skip">Skip for now</button>
     </div>
   </div>
 </div>
@@ -893,7 +935,7 @@ function clusterOffset(id) {
     h2 ^= id.charCodeAt(i); h2 = Math.imul(h2, 2654435769);
   }
   const a = ((h1 >>> 0) / 4294967295) * Math.PI * 2;   // angle
-  const r = ((h2 >>> 0) / 4294967295) * 4.0;            // radius up to 4 units (~2.4m)
+  const r = ((h2 >>> 0) / 4294967295) * 12.0;           // radius up to 12 units (~7m)
   return { dx: Math.cos(a) * r, dz: Math.sin(a) * r };
 }
 
@@ -902,8 +944,8 @@ function makeColumn(anxiety) {
   const totalMs = anxiety.resolvedAt - anxiety.createdAt;
   const totalHeight = Math.max(0.5, columnFullHeight(totalMs));
 
-  // 1m radius in real-world (1 unit = 0.6m → 1/0.6 ≈ 1.67 units)
-  const radius = 1.67;
+  // ~5m radius in real-world (1 unit = 0.6m → 5/0.6 ≈ 8.33 units)
+  const radius = 8.33;
   const geo = new THREE.CylinderGeometry(radius, radius, totalHeight, 24, 32, false);
   // Pivot so origin is at the BOTTOM of the cylinder (createdAt time)
   geo.translate(0, totalHeight / 2, 0);
@@ -934,6 +976,9 @@ function makeColumn(anxiety) {
   });
   // Shader injection: hard cut at world Y = 0. Above = bright vertex colour,
   // below = flat grey (the "past archive" look from before).
+  // Shader injection: discard any fragment below the present plane (y=0).
+  // The column "disappears" cleanly as it sinks rather than persisting as a
+  // greyed past-archive.
   mat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader.replace(
       '#include <common>',
@@ -950,14 +995,9 @@ function makeColumn(anxiety) {
        varying float vWorldY;`
     ).replace(
       '#include <emissivemap_fragment>',
-      `float above = step(0.0, vWorldY);
-       totalEmissiveRadiance += vColor * (0.7 * above);`
-    ).replace(
-      '#include <dithering_fragment>',
-      `float above2 = step(0.0, vWorldY);
-       vec3 pastGrey = vec3(0.55);
-       gl_FragColor.rgb = mix(pastGrey, gl_FragColor.rgb, above2);
-       #include <dithering_fragment>`
+      // Make the visible portion brightly emissive in its vertex colour
+      `if (vWorldY < 0.0) discard;
+       totalEmissiveRadiance += vColor * 0.7;`
     );
   };
 
@@ -971,30 +1011,93 @@ function makeColumn(anxiety) {
   return mesh;
 }
 
-// State for active column meshes
-const columnMeshes = new Map();   // anxiety.id → mesh
+// State for active column meshes + their "marks" left behind after resolution
+const columnMeshes = new Map();   // anxiety.id → cylinder mesh
+const markMeshes = new Map();     // anxiety.id → flat disc mesh
+
+// Create a small flat disc to mark the spot where a column once stood.
+// Uses the column's near-present (warm amber) colour so it reads as a
+// faint echo of the original.
+// Colour scheme for marks based on the reflection chosen for that anxiety.
+// Unreflected marks are white (a blank record). Once a user reflects, the
+// mark recolours to reflect their take.
+const REFLECT_COLORS = {
+  null:    '#ffffff',  // unreflected — clean white slate
+  better:  '#5fb89a',  // sage green — better than expected
+  same:    '#e6c947',  // warm yellow — about what expected
+  harder:  '#3a4a7e',  // deep indigo — harder than expected
+};
+function reflectColor(reflection) {
+  return new THREE.Color(REFLECT_COLORS[reflection || null] || REFLECT_COLORS.null);
+}
+
+function makeMark(anxiety) {
+  const markRadius = 8.33;  // same as column radius (5m real-world)
+  const geo = new THREE.CircleGeometry(markRadius, 32);
+  // CircleGeometry lives in XY by default — rotate -PI/2 around X to lay flat
+  geo.rotateX(-Math.PI / 2);
+  const mat = new THREE.MeshBasicMaterial({
+    color: reflectColor(anxiety.reflection),
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.userData = {
+    anxietyId: anxiety.id,
+    resolvedAt: anxiety.resolvedAt,
+    reflection: anxiety.reflection || null,
+  };
+  mesh.visible = false;  // only shown once the column has resolved
+  return mesh;
+}
+
+// Update an existing mark's colour without rebuilding the whole scene.
+function setMarkReflection(anxietyId, reflection) {
+  const mark = markMeshes.get(anxietyId);
+  if (!mark) return;
+  mark.material.color.copy(reflectColor(reflection));
+  mark.userData.reflection = reflection;
+}
 
 // Rebuild all columns from scratch based on the active dataset.
 // Call this whenever the data set changes (mode toggle, new anxiety, etc.).
 function rebuildColumns() {
-  // Dispose old
+  // Dispose old columns + marks
   for (const m of columnMeshes.values()) {
     if (m.geometry) m.geometry.dispose();
     if (m.material) m.material.dispose();
     scene.remove(m);
   }
   columnMeshes.clear();
+  for (const m of markMeshes.values()) {
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) m.material.dispose();
+    scene.remove(m);
+  }
+  markMeshes.clear();
 
   if (!S.currentPos) return;
 
   for (const a of activeDataset()) {
-    const col = makeColumn(a);
     const { x, z } = projectToScene(a.lat, a.lng);
     const off = clusterOffset(a.id);
-    col.position.x = x + off.dx;
-    col.position.z = z + off.dz;
+    const px = x + off.dx;
+    const pz = z + off.dz;
+
+    const col = makeColumn(a);
+    col.position.x = px;
+    col.position.z = pz;
     scene.add(col);
     columnMeshes.set(a.id, col);
+
+    const mark = makeMark(a);
+    mark.position.x = px;
+    mark.position.y = 0.05;     // just above the plane to avoid z-fight
+    mark.position.z = pz;
+    scene.add(mark);
+    markMeshes.set(a.id, mark);
   }
   updateColumnPositions();
 }
@@ -1012,29 +1115,20 @@ function updateColumnPositions() {
     // Hide columns whose anxiety hasn't been created yet (relative to simNow).
     if (ud.createdAt > simNow) { m.visible = false; continue; }
     m.visible = true;
-    // The portion of the column ABOVE the plane should always equal what a
-    // fresh column with the *remaining* duration would look like. So we set
-    // the cylinder's bottom (local Y=0 of its geometry) to a y position
-    // where the visible-above-plane part is exactly columnFullHeight(remaining):
-    //
-    //   y_bottom = -(totalHeight - heightRemaining)
-    //
-    // At created time:      remaining = totalDuration  →  y_bottom = 0
-    // At resolved time:     remaining = 0              →  y_bottom = -totalHeight
-    //                                                     (fully sunk, top at y=0)
-    // Past resolution:      remaining < 0              →  y_bottom continues downward
+    // See sinking-math notes in the column system comment above.
     const remainingMs = ud.resolvedAt - simNow;
     if (remainingMs > 0) {
       const heightRemaining = columnFullHeight(remainingMs);
       m.position.y = -(ud.totalHeight - heightRemaining);
     } else {
-      // Already resolved — keep sinking proportionally to how long ago.
-      // Use the same log formula but on |remainingMs| so the descent decelerates
-      // the further past resolution you go (matches the way past anxieties feel:
-      // they recede slowly into history rather than crashing away).
       const sinkExtra = columnFullHeight(-remainingMs);
       m.position.y = -ud.totalHeight - sinkExtra;
     }
+  }
+  // Marks: visible only once the anxiety has resolved (simNow > resolvedAt).
+  // Scrubbing back hides the mark; the column reappears.
+  for (const mark of markMeshes.values()) {
+    mark.visible = mark.userData.resolvedAt <= simNow;
   }
 }
 
@@ -1123,6 +1217,8 @@ function startWatch() {
           Math.abs(prev.lng - S.currentPos.lng) > 0.00001) {
         rebuildColumns();
       }
+      // Check whether we're near any unreflected resolved anxieties
+      if (typeof checkReflectProximity === 'function') checkReflectProximity();
     },
     err => {
       const messages = {
@@ -1321,6 +1417,7 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     lng: S.pendingPos.lng,
     createdAt,
     resolvedAt,
+    reflection: null,    // 'better' | 'same' | 'harder' | null (unreflected)
   };
   S.anxieties.push(anxiety);
   persist();
@@ -1347,6 +1444,11 @@ function openModal(isOnboarding) {
 function closeModal() {
   document.getElementById('modal-backdrop').classList.add('closing');
   document.getElementById('modal-backdrop').classList.remove('active');
+  // After dismissing onboarding/settings, check whether any unreflected
+  // resolved anxieties are within reflection range right now.
+  setTimeout(() => {
+    if (typeof checkReflectProximity === 'function') checkReflectProximity();
+  }, 300);
 }
 
 document.getElementById('settings-btn').addEventListener('click', () => {
@@ -1385,9 +1487,135 @@ async function setMapMode(mode) {
   document.getElementById('time-slider').value = 1000;
   rebuildColumns();
   updateTimeUI();
+  if (typeof checkReflectProximity === 'function') checkReflectProximity();
 }
 document.getElementById('map-mine').addEventListener('click', () => setMapMode('mine'));
 document.getElementById('map-shared').addEventListener('click', () => setMapMode('shared'));
+
+// ── Reflection system ─────────────────────────────────────────
+// After an anxiety has resolved, the user can record how it actually
+// turned out. The mark on the map recolours based on their choice.
+//
+// Reflection happens either:
+//   (a) automatically, when you walk near the spot of an unreflected
+//       resolved anxiety (within 50m), the modal appears for it
+//   (b) explicitly, by tapping a mark in the 3D view
+//
+// Reflections are personal-only — they're stored in the same localStorage
+// blob as the anxiety itself ('anchor-v2'). Shared anxieties never carry
+// reflection state in this version.
+
+const REFLECT_PROXIMITY_M = 50;  // metres — how close you need to be for auto-prompt
+
+// Queue of anxiety IDs waiting to be reflected on (proximity-triggered).
+// When the modal closes after one, the next in the queue is shown.
+let reflectQueue = [];
+let reflectCurrent = null;
+// IDs we've already prompted about in this session (so closing the modal
+// doesn't immediately re-prompt the same one).
+const reflectSeenThisSession = new Set();
+
+function distanceMetres(latA, lngA, latB, lngB) {
+  // Haversine for short distances — good enough at this scale
+  const R = 6371000;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(latB - latA);
+  const dLng = toRad(lngB - lngA);
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(toRad(latA)) * Math.cos(toRad(latB)) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// Find personal anxieties that:
+//   - have already resolved (relative to wall-clock time, not simNow)
+//   - have no reflection yet
+//   - are within REFLECT_PROXIMITY_M of the user's current position
+//   - haven't been shown in this session yet
+function findNearbyUnreflected() {
+  if (!S.currentPos) return [];
+  const now = nowMs();
+  return S.anxieties.filter(a =>
+    a.resolvedAt <= now &&
+    !a.reflection &&
+    !reflectSeenThisSession.has(a.id) &&
+    distanceMetres(S.currentPos.lat, S.currentPos.lng, a.lat, a.lng) <= REFLECT_PROXIMITY_M
+  );
+}
+
+function openReflectModal(anxietyId) {
+  const anxiety = S.anxieties.find(a => a.id === anxietyId);
+  if (!anxiety) return;
+  reflectCurrent = anxietyId;
+  reflectSeenThisSession.add(anxietyId);
+  document.getElementById('reflect-backdrop').classList.add('active');
+}
+function closeReflectModal() {
+  reflectCurrent = null;
+  document.getElementById('reflect-backdrop').classList.remove('active');
+  // If more in the queue, show the next one
+  if (reflectQueue.length > 0) {
+    setTimeout(() => openReflectModal(reflectQueue.shift()), 220);
+  }
+}
+function saveReflection(value) {
+  if (!reflectCurrent) return closeReflectModal();
+  const anxiety = S.anxieties.find(a => a.id === reflectCurrent);
+  if (anxiety) {
+    anxiety.reflection = value;
+    persist();
+    setMarkReflection(anxiety.id, value);
+  }
+  closeReflectModal();
+}
+
+// Reflect-modal events
+document.querySelectorAll('.reflect-option').forEach(btn => {
+  btn.addEventListener('click', () => saveReflection(btn.dataset.value));
+});
+document.getElementById('reflect-skip').addEventListener('click', closeReflectModal);
+
+// Check proximity now (and call after every GPS update too)
+function checkReflectProximity() {
+  // Only auto-prompt when viewing personal map — shared marks have no
+  // personal reflection to set, and we don't want to surface this UI
+  // while the user is exploring the collective view.
+  if (S.mapMode !== 'mine') return;
+  if (reflectCurrent) return;            // modal already open
+  if (document.getElementById('modal-backdrop').classList.contains('active')) return;  // settings/onboarding open
+  const nearby = findNearbyUnreflected();
+  if (nearby.length === 0) return;
+  reflectQueue = nearby.slice(1).map(a => a.id);
+  openReflectModal(nearby[0].id);
+}
+
+// ── Tap-to-reflect: raycast on marks when canvas is clicked ──
+const reflectRaycaster = new THREE.Raycaster();
+const reflectPointer = new THREE.Vector2();
+document.getElementById('three-canvas').addEventListener('click', e => {
+  if (!camera || S.mapMode !== 'mine') return;   // only personal marks are reflectable
+  const rect = e.currentTarget.getBoundingClientRect();
+  reflectPointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  reflectPointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  reflectRaycaster.setFromCamera(reflectPointer, camera);
+  // Only ray-test currently visible marks
+  const visibleMarks = [];
+  for (const m of markMeshes.values()) {
+    if (m.visible) visibleMarks.push(m);
+  }
+  const hits = reflectRaycaster.intersectObjects(visibleMarks, false);
+  if (hits.length > 0) {
+    const hitId = hits[0].object.userData.anxietyId;
+    // Allow re-reflection: clear the session-seen so the same one can re-open
+    reflectSeenThisSession.delete(hitId);
+    openReflectModal(hitId);
+  }
+});
+
+// We want to auto-check proximity right after the first GPS fix, and then
+// every few seconds in case the user has been still and walks somewhere.
+// The interval is cheap (just a few hundred meters check) and avoids needing
+// to splice into the existing GPS handler.
+setInterval(checkReflectProximity, 5000);
 
 // ── First-launch onboarding ────────────────────────────────────
 hydrateSettings();
