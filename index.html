@@ -31,32 +31,6 @@ html,body{height:100%;font-family:Georgia,serif;font-size:15px;color:var(--text)
 #screen-main{overflow:hidden;background:var(--night)}
 #three-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 
-.time-scrub{
-  position:absolute;top:64px;left:50%;transform:translateX(-50%);
-  background:rgba(34,37,44,.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-  border:1px solid var(--border);border-radius:18px;padding:10px 16px;
-  display:flex;flex-direction:column;gap:6px;
-  width:min(380px,calc(100% - 32px));
-  font-size:13px;z-index:500;font-family:system-ui,sans-serif;color:var(--text);
-}
-.time-scrub-row{display:flex;align-items:center;justify-content:center;gap:8px}
-.time-label{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums;font-size:13px}
-.time-slider-row{padding:0 2px}
-#time-slider{
-  -webkit-appearance:none;appearance:none;
-  width:100%;height:4px;background:var(--night-3);border-radius:2px;outline:none;
-  cursor:pointer;
-}
-#time-slider::-webkit-slider-thumb{
-  -webkit-appearance:none;appearance:none;
-  width:14px;height:14px;background:var(--accent);border-radius:50%;
-  cursor:pointer;
-}
-#time-slider::-moz-range-thumb{
-  width:14px;height:14px;background:var(--accent);border:none;border-radius:50%;
-  cursor:pointer;
-}
-
 .archive-toggle{position:absolute;top:16px;right:14px;background:rgba(34,37,44,.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--border);color:var(--text-m);padding:9px 14px;border-radius:11px;cursor:pointer;font-family:system-ui,sans-serif;font-size:12px;z-index:500;display:flex;align-items:center;gap:6px;transition:color .2s,background .2s}
 .archive-toggle:hover{background:rgba(95,184,154,.2);color:var(--text)}
 .archive-toggle.active{background:var(--accent);color:var(--night);border-color:var(--accent)}
@@ -190,9 +164,48 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
 }
 .reflect-option:hover{background:#363a44;border-color:rgba(255,255,255,.2)}
 .reflect-option:active{transform:scale(.98)}
+.reflect-option.selected{background:#363a44;border-color:var(--text-m)}
 .reflect-swatch{
   width:22px;height:22px;border-radius:50%;flex-shrink:0;
   box-shadow:0 0 0 1px rgba(255,255,255,.15) inset;
+}
+
+.reflect-note{margin-top:18px;display:flex;flex-direction:column;gap:8px}
+.reflect-note-label{font-size:12px;color:var(--text-m);font-family:system-ui,sans-serif}
+.reflect-note-optional{color:var(--text-f);font-style:italic}
+#reflect-text{
+  width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:var(--r);
+  background:var(--night-3);color:var(--text);
+  font-family:Georgia,serif;font-size:14px;line-height:1.55;
+  resize:vertical;min-height:80px;outline:none;
+  transition:border-color .2s;
+}
+#reflect-text:focus{border-color:var(--accent)}
+#reflect-text::placeholder{color:var(--text-f);font-style:italic}
+
+/* ── Read-only view of a reflected mark ── */
+.view-reflection{
+  display:flex;align-items:center;gap:14px;
+  padding:14px 16px;background:var(--night-3);border:1px solid var(--border);
+  border-radius:var(--r);
+}
+.view-swatch{
+  width:26px;height:26px;border-radius:50%;flex-shrink:0;
+  box-shadow:0 0 0 1px rgba(255,255,255,.15) inset;
+}
+.view-label{
+  color:var(--text);font-family:system-ui,sans-serif;font-size:15px;font-weight:500;
+}
+.view-note{margin-top:16px}
+.view-note-label{
+  font-size:11px;color:var(--text-f);text-transform:uppercase;letter-spacing:.8px;
+  margin-bottom:8px;font-family:system-ui,sans-serif;
+}
+.view-note-text{
+  background:var(--night-3);border:1px solid var(--border);
+  border-radius:var(--r);padding:14px 16px;
+  font-family:Georgia,serif;font-size:14px;line-height:1.6;
+  color:var(--text);white-space:pre-wrap;word-wrap:break-word;
 }
 
 /* ── TOAST ── */
@@ -211,12 +224,6 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
   <div class="map-toggle">
     <button id="map-mine" class="active">My map</button>
     <button id="map-shared">Shared map</button>
-  </div>
-  <div class="time-scrub" id="time-scrub">
-    <div class="time-scrub-row">
-      <span class="time-label" id="time-label">Now</span>
-    </div>
-    <input type="range" id="time-slider" min="0" max="1000" value="1000" step="1"/>
   </div>
   <div class="bottom-bar">
     <button class="btn-log" id="btn-log">I'm feeling anxious — log this</button>
@@ -331,7 +338,7 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
     <p style="font-size:14px;color:var(--text-m);line-height:1.6;margin-bottom:6px">You once stood here and felt anxious about something to come. Now that it's behind you — how did it actually turn out compared to what you anticipated?</p>
     <p style="font-size:13px;color:var(--text-f);line-height:1.6;margin-bottom:20px;font-style:italic">There's no right answer. The point is honest reflection, not a positive tally.</p>
 
-    <div class="reflect-options">
+    <div class="reflect-options" id="reflect-options">
       <button class="reflect-option" data-value="better">
         <span class="reflect-swatch" style="background:#5fb89a"></span>
         <span>Better than I expected</span>
@@ -346,8 +353,38 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
       </button>
     </div>
 
+    <div class="reflect-note">
+      <label for="reflect-text" class="reflect-note-label">Anything you want to leave here? <span class="reflect-note-optional">(optional)</span></label>
+      <textarea id="reflect-text" rows="4" placeholder="A note for your future self…"></textarea>
+    </div>
+
     <div class="modal-actions" style="margin-top:18px">
       <button class="btn-secondary" id="reflect-skip">Skip for now</button>
+      <button class="btn-primary" id="reflect-save">Leave it here</button>
+    </div>
+  </div>
+</div>
+
+<!-- Read-only view of an already-reflected mark. Tapping Edit transitions
+     to the regular reflect modal (pre-filled). -->
+<div class="modal-backdrop" id="view-backdrop">
+  <div class="modal">
+    <h2>A moment you left here</h2>
+    <p style="font-size:13px;color:var(--text-m);line-height:1.6;margin-bottom:18px">Here's what you took from this when you came back to it.</p>
+
+    <div class="view-reflection" id="view-reflection">
+      <span class="view-swatch" id="view-swatch"></span>
+      <span class="view-label" id="view-label">—</span>
+    </div>
+
+    <div class="view-note" id="view-note">
+      <div class="view-note-label">Note to yourself</div>
+      <p class="view-note-text" id="view-note-text"></p>
+    </div>
+
+    <div class="modal-actions" style="margin-top:18px">
+      <button class="btn-secondary" id="view-close">Close</button>
+      <button class="btn-primary" id="view-edit">Edit</button>
     </div>
   </div>
 </div>
@@ -1152,50 +1189,9 @@ function animate() {
   if (t - lastNowUpdate > 250) {
     lastNowUpdate = t;
     deformPlane();
-    updateTimeUI();
   }
   controls.update();
   composer.render();
-}
-
-function updateTimeUI() {
-  const label = document.getElementById('time-label');
-  if (S.simOffset >= -60 * 1000) {
-    // Right at "now" (within a minute) — show the present label
-    label.textContent = 'Now';
-  } else {
-    // Showing a past moment — display its date
-    const simNow = nowMs() + S.simOffset;
-    label.textContent = new Date(simNow).toLocaleDateString('en-US',
-      { month: 'short', day: 'numeric', year: 'numeric' });
-  }
-}
-
-// History bounds — derived from the earliest anxiety we have. Returns a
-// millisecond timestamp representing how far back the slider can scrub.
-function getHistoryStartMs() {
-  const data = activeDataset();
-  if (data.length === 0) return nowMs(); // no data → no past
-  const minCreated = Math.min(...data.map(a => a.createdAt));
-  return minCreated - 60 * 60 * 1000;  // 1 hour before earliest
-}
-
-// Slider value 0..1000 → simOffset (ms, ≤ 0)
-function sliderValueToOffset(v) {
-  const start = getHistoryStartMs();
-  const realNow = nowMs();
-  const span = realNow - start;
-  if (span <= 0) return 0;
-  // Linear: 0 = start of history (oldest), 1000 = now
-  return -((1000 - v) / 1000) * span;
-}
-function offsetToSliderValue(offset) {
-  const start = getHistoryStartMs();
-  const realNow = nowMs();
-  const span = realNow - start;
-  if (span <= 0) return 1000;
-  // offset is ≤ 0
-  return 1000 - ((-offset / span) * 1000);
 }
 
 // ── Geolocation ────────────────────────────────────────────────
@@ -1257,18 +1253,6 @@ function whenSized(el, cb, maxTries=60) {
 whenSized(document.getElementById('three-canvas'), () => {
   initThree();
   startWatch();
-  updateTimeUI();
-});
-
-// ── Time scrub slider ──────────────────────────────────────────
-const timeSlider = document.getElementById('time-slider');
-timeSlider.addEventListener('input', e => {
-  const v = parseFloat(e.target.value);
-  S.simOffset = sliderValueToOffset(v);
-  // Snap to "now" if very close to the right edge
-  if (v > 995) S.simOffset = 0;
-  deformPlane();
-  updateTimeUI();
 });
 
 // ── Events: log flow ───────────────────────────────────────────
@@ -1417,7 +1401,8 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     lng: S.pendingPos.lng,
     createdAt,
     resolvedAt,
-    reflection: null,    // 'better' | 'same' | 'harder' | null (unreflected)
+    reflection: null,        // 'better' | 'same' | 'harder' | null (unreflected)
+    reflectionText: null,    // optional free-text note left by the user
   };
   S.anxieties.push(anxiety);
   persist();
@@ -1482,11 +1467,7 @@ async function setMapMode(mode) {
       toast(`Showing ${S.sharedAnxieties.length} shared anxieties`);
     }
   }
-  // Reset scrub to "now" when switching modes (history bounds change)
-  S.simOffset = 0;
-  document.getElementById('time-slider').value = 1000;
   rebuildColumns();
-  updateTimeUI();
   if (typeof checkReflectProximity === 'function') checkReflectProximity();
 }
 document.getElementById('map-mine').addEventListener('click', () => setMapMode('mine'));
@@ -1542,37 +1523,60 @@ function findNearbyUnreflected() {
   );
 }
 
+// Currently-selected reflection value in the modal (not yet saved).
+let reflectSelected = null;
+
 function openReflectModal(anxietyId) {
   const anxiety = S.anxieties.find(a => a.id === anxietyId);
   if (!anxiety) return;
   reflectCurrent = anxietyId;
   reflectSeenThisSession.add(anxietyId);
+  // Prefill from any prior reflection so the user can read what they wrote
+  // last time and edit if they want.
+  reflectSelected = anxiety.reflection || null;
+  document.getElementById('reflect-text').value = anxiety.reflectionText || '';
+  // Visually mark the previously-selected option (if any)
+  document.querySelectorAll('.reflect-option').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.value === reflectSelected);
+  });
   document.getElementById('reflect-backdrop').classList.add('active');
 }
 function closeReflectModal() {
   reflectCurrent = null;
+  reflectSelected = null;
   document.getElementById('reflect-backdrop').classList.remove('active');
   // If more in the queue, show the next one
   if (reflectQueue.length > 0) {
     setTimeout(() => openReflectModal(reflectQueue.shift()), 220);
   }
 }
-function saveReflection(value) {
+function saveReflection() {
   if (!reflectCurrent) return closeReflectModal();
   const anxiety = S.anxieties.find(a => a.id === reflectCurrent);
   if (anxiety) {
-    anxiety.reflection = value;
+    // Only update colour if the user actually picked one; otherwise leave
+    // whatever was already there (or null = white)
+    if (reflectSelected) anxiety.reflection = reflectSelected;
+    const note = document.getElementById('reflect-text').value.trim();
+    anxiety.reflectionText = note || null;
     persist();
-    setMarkReflection(anxiety.id, value);
+    if (reflectSelected) setMarkReflection(anxiety.id, reflectSelected);
   }
   closeReflectModal();
 }
 
-// Reflect-modal events
+// Reflect-modal events: clicking a colour just selects it (visual state),
+// doesn't save. "Leave it here" finalises both colour + text.
 document.querySelectorAll('.reflect-option').forEach(btn => {
-  btn.addEventListener('click', () => saveReflection(btn.dataset.value));
+  btn.addEventListener('click', () => {
+    reflectSelected = btn.dataset.value;
+    document.querySelectorAll('.reflect-option').forEach(b => {
+      b.classList.toggle('selected', b === btn);
+    });
+  });
 });
 document.getElementById('reflect-skip').addEventListener('click', closeReflectModal);
+document.getElementById('reflect-save').addEventListener('click', saveReflection);
 
 // Check proximity now (and call after every GPS update too)
 function checkReflectProximity() {
@@ -1588,27 +1592,72 @@ function checkReflectProximity() {
   openReflectModal(nearby[0].id);
 }
 
-// ── Tap-to-reflect: raycast on marks when canvas is clicked ──
+// ── Tap on a mark: route to the right modal ──
+// Already-reflected marks open the read-only view modal (with an Edit
+// button to enter the reflection modal). Unreflected (white) marks
+// open the reflection modal directly.
 const reflectRaycaster = new THREE.Raycaster();
 const reflectPointer = new THREE.Vector2();
 document.getElementById('three-canvas').addEventListener('click', e => {
-  if (!camera || S.mapMode !== 'mine') return;   // only personal marks are reflectable
+  if (!camera || S.mapMode !== 'mine') return;   // only personal marks are interactive
   const rect = e.currentTarget.getBoundingClientRect();
   reflectPointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
   reflectPointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
   reflectRaycaster.setFromCamera(reflectPointer, camera);
-  // Only ray-test currently visible marks
   const visibleMarks = [];
   for (const m of markMeshes.values()) {
     if (m.visible) visibleMarks.push(m);
   }
   const hits = reflectRaycaster.intersectObjects(visibleMarks, false);
-  if (hits.length > 0) {
-    const hitId = hits[0].object.userData.anxietyId;
-    // Allow re-reflection: clear the session-seen so the same one can re-open
-    reflectSeenThisSession.delete(hitId);
+  if (hits.length === 0) return;
+  const hitId = hits[0].object.userData.anxietyId;
+  const anxiety = S.anxieties.find(a => a.id === hitId);
+  if (!anxiety) return;
+  // Clear session-seen so the proximity logic won't keep us out of the loop
+  reflectSeenThisSession.delete(hitId);
+  if (anxiety.reflection) {
+    openViewModal(hitId);
+  } else {
     openReflectModal(hitId);
   }
+});
+
+// ── Read-only view of a reflected mark ──
+// Shows the colour + label + note. From here, "Edit" transitions to the
+// regular reflect modal (which already handles prefilling).
+const REFLECT_LABELS = {
+  better: 'Better than I expected',
+  same:   'About what I expected',
+  harder: 'Harder than I expected',
+};
+let viewCurrent = null;
+function openViewModal(anxietyId) {
+  const anxiety = S.anxieties.find(a => a.id === anxietyId);
+  if (!anxiety) return;
+  viewCurrent = anxietyId;
+  document.getElementById('view-swatch').style.background =
+    REFLECT_COLORS[anxiety.reflection] || REFLECT_COLORS.null;
+  document.getElementById('view-label').textContent =
+    REFLECT_LABELS[anxiety.reflection] || '—';
+  const note = (anxiety.reflectionText || '').trim();
+  const noteSection = document.getElementById('view-note');
+  if (note) {
+    document.getElementById('view-note-text').textContent = note;
+    noteSection.style.display = '';
+  } else {
+    noteSection.style.display = 'none';
+  }
+  document.getElementById('view-backdrop').classList.add('active');
+}
+function closeViewModal() {
+  viewCurrent = null;
+  document.getElementById('view-backdrop').classList.remove('active');
+}
+document.getElementById('view-close').addEventListener('click', closeViewModal);
+document.getElementById('view-edit').addEventListener('click', () => {
+  const id = viewCurrent;
+  closeViewModal();
+  if (id) setTimeout(() => openReflectModal(id), 180);
 });
 
 // We want to auto-check proximity right after the first GPS fix, and then
