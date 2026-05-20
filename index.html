@@ -1010,14 +1010,31 @@ function updateColumnPositions() {
   for (const m of columnMeshes.values()) {
     const ud = m.userData;
     // Hide columns whose anxiety hasn't been created yet (relative to simNow).
-    // This makes sense when scrubbing back: anxieties logged later just aren't
-    // visible.
     if (ud.createdAt > simNow) { m.visible = false; continue; }
     m.visible = true;
-    // Bottom (createdAt) y in world space = (createdAt - simNow) / MS_PER_UNIT_V.
-    // At simNow == createdAt, bottom is at y=0 (the present plane).
-    // After that, the column sinks (bottom y goes negative).
-    m.position.y = (ud.createdAt - simNow) / MS_PER_UNIT_V;
+    // The portion of the column ABOVE the plane should always equal what a
+    // fresh column with the *remaining* duration would look like. So we set
+    // the cylinder's bottom (local Y=0 of its geometry) to a y position
+    // where the visible-above-plane part is exactly columnFullHeight(remaining):
+    //
+    //   y_bottom = -(totalHeight - heightRemaining)
+    //
+    // At created time:      remaining = totalDuration  →  y_bottom = 0
+    // At resolved time:     remaining = 0              →  y_bottom = -totalHeight
+    //                                                     (fully sunk, top at y=0)
+    // Past resolution:      remaining < 0              →  y_bottom continues downward
+    const remainingMs = ud.resolvedAt - simNow;
+    if (remainingMs > 0) {
+      const heightRemaining = columnFullHeight(remainingMs);
+      m.position.y = -(ud.totalHeight - heightRemaining);
+    } else {
+      // Already resolved — keep sinking proportionally to how long ago.
+      // Use the same log formula but on |remainingMs| so the descent decelerates
+      // the further past resolution you go (matches the way past anxieties feel:
+      // they recede slowly into history rather than crashing away).
+      const sinkExtra = columnFullHeight(-remainingMs);
+      m.position.y = -ud.totalHeight - sinkExtra;
+    }
   }
 }
 
