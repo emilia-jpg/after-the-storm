@@ -59,6 +59,14 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
 .duration-input input:focus{border-color:var(--accent)}
 .duration-input select{padding:14px;border:1px solid var(--border);border-radius:var(--r);background:var(--night-2);font-family:system-ui,sans-serif;font-size:15px;color:var(--text);outline:none;cursor:pointer}
 
+.label-input{
+  width:100%;padding:14px;border:1px solid var(--border);border-radius:var(--r);
+  background:var(--night-2);font-family:system-ui,sans-serif;font-size:15px;
+  color:var(--text);outline:none;transition:border-color .2s;
+}
+.label-input:focus{border-color:var(--accent)}
+.label-input::placeholder{color:var(--text-f);font-style:italic}
+
 .mode-tabs{display:flex;gap:0;background:var(--night-2);border:1px solid var(--border);border-radius:var(--r);padding:4px;font-family:system-ui,sans-serif}
 .mode-tab{flex:1;background:none;border:none;color:var(--text-m);font-family:system-ui,sans-serif;font-size:13px;padding:9px 8px;border-radius:calc(var(--r) - 4px);cursor:pointer;transition:background .2s,color .2s}
 .mode-tab:hover{color:var(--text)}
@@ -126,6 +134,13 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
   max-height:90vh;overflow-y:auto;
 }
 .modal h2{font-family:Georgia,serif;font-size:22px;font-weight:700;letter-spacing:-.4px;margin-bottom:14px;color:var(--text)}
+
+.modal-label{
+  display:inline-block;background:var(--night-3);border:1px solid var(--border);
+  border-radius:100px;padding:5px 14px;margin-bottom:14px;
+  font-family:system-ui,sans-serif;font-size:13px;color:var(--text);
+  max-width:100%;overflow-wrap:break-word;
+}
 .modal-section{margin-bottom:24px;font-size:14px;line-height:1.65;color:var(--text-m)}
 .modal-section:last-of-type{margin-bottom:0}
 .modal-section h3{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-f);margin-bottom:10px}
@@ -208,6 +223,24 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
   color:var(--text);white-space:pre-wrap;word-wrap:break-word;
 }
 
+/* ── Extend options (used in the "still going" picker) ── */
+.extend-options{display:flex;flex-direction:column;gap:8px}
+.extend-option{
+  padding:13px 16px;background:var(--night-3);border:1px solid var(--border);
+  border-radius:var(--r);color:var(--text);font-family:system-ui,sans-serif;font-size:15px;
+  cursor:pointer;text-align:left;transition:background .2s,border-color .2s;
+}
+.extend-option:hover{background:#363a44;border-color:rgba(255,255,255,.2)}
+
+/* "This isn't over yet" — a quieter link-style button inside the reflect modal */
+.btn-quiet{
+  background:none;border:none;color:var(--text-m);
+  font-family:system-ui,sans-serif;font-size:13px;text-decoration:underline;
+  cursor:pointer;padding:8px 0;align-self:flex-start;
+  transition:color .2s;
+}
+.btn-quiet:hover{color:var(--text)}
+
 /* ── TOAST ── */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(16px);background:var(--night-3);color:var(--text);border:1px solid var(--border);border-radius:100px;padding:11px 20px;font-size:13px;font-weight:500;opacity:0;transition:opacity .3s,transform .3s;z-index:9999;pointer-events:none;white-space:nowrap;font-family:system-ui,sans-serif}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -238,11 +271,16 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
       Back
     </button>
     <h1>Mark this anxiety and travel past it</h1>
-    <p class="intro">You don't need to name what scares you. Just estimate how far you need to travel forward in time before the threat is behind you — when you'd be able to look back at it.</p>
+    <p class="intro">Just estimate how far you need to travel forward in time before the threat is behind you — when you'd be able to look back at it. You don't have to name what scares you, but you can leave yourself a quiet word so future-you remembers what this was about.</p>
 
     <div class="section">
       <span class="section-label">Place</span>
       <div class="location-status" id="location-status">Locating you…</div>
+    </div>
+
+    <div class="section">
+      <span class="section-label">Label <span style="color:var(--text-f);font-weight:400;text-transform:none;letter-spacing:0;font-style:italic">(optional, only visible to you)</span></span>
+      <input type="text" id="label-input" class="label-input" maxlength="80" placeholder="A word or two for future you…"/>
     </div>
 
     <div class="section">
@@ -335,6 +373,7 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
 <div class="modal-backdrop" id="reflect-backdrop">
   <div class="modal">
     <h2>Looking back</h2>
+    <div class="modal-label" id="reflect-label" style="display:none"></div>
     <p style="font-size:14px;color:var(--text-m);line-height:1.6;margin-bottom:6px">You once stood here and felt anxious about something to come. Now that it's behind you — how did it actually turn out compared to what you anticipated?</p>
     <p style="font-size:13px;color:var(--text-f);line-height:1.6;margin-bottom:20px;font-style:italic">There's no right answer. The point is honest reflection, not a positive tally.</p>
 
@@ -358,7 +397,9 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
       <textarea id="reflect-text" rows="4" placeholder="A note for your future self…"></textarea>
     </div>
 
-    <div class="modal-actions" style="margin-top:18px">
+    <button class="btn-quiet" id="reflect-not-over" style="margin-top:14px">This isn't over yet — give it more time</button>
+
+    <div class="modal-actions" style="margin-top:10px">
       <button class="btn-secondary" id="reflect-skip">Skip for now</button>
       <button class="btn-primary" id="reflect-save">Leave it here</button>
     </div>
@@ -370,6 +411,7 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
 <div class="modal-backdrop" id="view-backdrop">
   <div class="modal">
     <h2>A moment you left here</h2>
+    <div class="modal-label" id="view-anxiety-label" style="display:none"></div>
     <p style="font-size:13px;color:var(--text-m);line-height:1.6;margin-bottom:18px">Here's what you took from this when you came back to it.</p>
 
     <div class="view-reflection" id="view-reflection">
@@ -385,6 +427,37 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
     <div class="modal-actions" style="margin-top:18px">
       <button class="btn-secondary" id="view-close">Close</button>
       <button class="btn-primary" id="view-edit">Edit</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tap on an active column: ask whether the event has passed already.
+     If yes, set resolvedAt = now and open the reflection modal. -->
+<div class="modal-backdrop" id="early-backdrop">
+  <div class="modal">
+    <h2>Has this passed already?</h2>
+    <div class="modal-label" id="early-label" style="display:none"></div>
+    <p style="font-size:14px;color:var(--text-m);line-height:1.6;margin-bottom:20px">If you're past the moment you were anticipating — even sooner than you'd expected — you can mark it as resolved now.</p>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="early-cancel">Not yet</button>
+      <button class="btn-primary" id="early-confirm">Yes, I'm past it</button>
+    </div>
+  </div>
+</div>
+
+<!-- Extend an anxiety: opened from "This isn't over yet" in the reflect modal. -->
+<div class="modal-backdrop" id="extend-backdrop">
+  <div class="modal">
+    <h2>How much longer?</h2>
+    <p style="font-size:14px;color:var(--text-m);line-height:1.6;margin-bottom:18px">Push the resolution further. The column will rise again until you reach the new horizon.</p>
+    <div class="extend-options" id="extend-options">
+      <button class="extend-option" data-amount="1" data-unit="hours">Another hour</button>
+      <button class="extend-option" data-amount="1" data-unit="days">Another day</button>
+      <button class="extend-option" data-amount="1" data-unit="weeks">Another week</button>
+      <button class="extend-option" data-amount="1" data-unit="months">Another month</button>
+    </div>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn-secondary" id="extend-cancel">Cancel</button>
     </div>
   </div>
 </div>
@@ -736,7 +809,7 @@ function applyGridShader(material, cellSize, lineWidth, lineColor) {
        vec2 g = fract(vGridXZ / uGridCell);
        float onLine = step(min(g.x, g.y), uGridLine);
        gl_FragColor.rgb = uGridColor;
-       gl_FragColor.a = onLine * 0.45;
+       gl_FragColor.a = onLine * 0.2;
        #include <dithering_fragment>`
     );
     if (shader.fragmentShader === fBefore) {
@@ -811,7 +884,7 @@ function initThree() {
     depthWrite: false,
   });
   // White grid lines on transparent surface: 40-unit cells (~120m), 5% line width
-  applyGridShader(planeMat, 3.33, 0.05, new THREE.Color(0xffffff));
+  applyGridShader(planeMat, 8.33, 0.025, new THREE.Color(0xffffff));
   plane = new THREE.Mesh(planeGeo, planeMat);
   // Disc is already in XZ — no rotation needed.
   plane.position.y = 0;
@@ -856,7 +929,7 @@ function initThree() {
   });
   // Same world-space grid as the disc — identical cell size + offset
   // means the lines line up exactly across the seam.
-  applyGridShader(farMat, 3.33, 0.05, new THREE.Color(0xffffff));
+  applyGridShader(farMat, 8.33, 0.025, new THREE.Color(0xffffff));
   farPlane = new THREE.Mesh(farGeo, farMat);
   // The annular geometry already lives in the XZ plane (with Y for height),
   // so no rotation is needed.
@@ -1277,6 +1350,7 @@ function resetLogState() {
   document.getElementById('duration-amount').value = '';
   document.getElementById('duration-unit').value = 'days';
   document.getElementById('exact-datetime').value = '';
+  document.getElementById('label-input').value = '';
   document.getElementById('resolved-preview').style.display = 'none';
   document.getElementById('btn-save').disabled = true;
 }
@@ -1395,12 +1469,14 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   const resolvedAt = currentResolvedAt();
   if (!resolvedAt || resolvedAt <= nowMs()) return;
   const createdAt = nowMs();
+  const label = document.getElementById('label-input').value.trim();
   const anxiety = {
     id: 'a_' + createdAt + '_' + Math.random().toString(36).slice(2,7),
     lat: S.pendingPos.lat,
     lng: S.pendingPos.lng,
     createdAt,
     resolvedAt,
+    label: label || null,    // optional, personal-only — never sent to Supabase
     reflection: null,        // 'better' | 'same' | 'harder' | null (unreflected)
     reflectionText: null,    // optional free-text note left by the user
   };
@@ -1539,6 +1615,14 @@ function openReflectModal(anxietyId) {
   document.querySelectorAll('.reflect-option').forEach(btn => {
     btn.classList.toggle('selected', btn.dataset.value === reflectSelected);
   });
+  // Show the user-given label if there is one
+  const labelEl = document.getElementById('reflect-label');
+  if (anxiety.label) {
+    labelEl.textContent = anxiety.label;
+    labelEl.style.display = '';
+  } else {
+    labelEl.style.display = 'none';
+  }
   document.getElementById('reflect-backdrop').classList.add('active');
 }
 function closeReflectModal() {
@@ -1592,33 +1676,49 @@ function checkReflectProximity() {
   openReflectModal(nearby[0].id);
 }
 
-// ── Tap on a mark: route to the right modal ──
-// Already-reflected marks open the read-only view modal (with an Edit
-// button to enter the reflection modal). Unreflected (white) marks
-// open the reflection modal directly.
+// ── Tap on a mark or column: route to the right modal ──
+// Already-reflected marks → read-only view modal (with Edit button)
+// Unreflected (white) marks → reflection modal directly
+// Active columns → "has this passed already?" confirm
 const reflectRaycaster = new THREE.Raycaster();
 const reflectPointer = new THREE.Vector2();
 document.getElementById('three-canvas').addEventListener('click', e => {
-  if (!camera || S.mapMode !== 'mine') return;   // only personal marks are interactive
+  if (!camera || S.mapMode !== 'mine') return;   // only personal anxieties are interactive
   const rect = e.currentTarget.getBoundingClientRect();
   reflectPointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
   reflectPointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
   reflectRaycaster.setFromCamera(reflectPointer, camera);
+
+  // Check marks first (smaller targets but more specific intent)
   const visibleMarks = [];
   for (const m of markMeshes.values()) {
     if (m.visible) visibleMarks.push(m);
   }
-  const hits = reflectRaycaster.intersectObjects(visibleMarks, false);
-  if (hits.length === 0) return;
-  const hitId = hits[0].object.userData.anxietyId;
-  const anxiety = S.anxieties.find(a => a.id === hitId);
-  if (!anxiety) return;
-  // Clear session-seen so the proximity logic won't keep us out of the loop
-  reflectSeenThisSession.delete(hitId);
-  if (anxiety.reflection) {
-    openViewModal(hitId);
-  } else {
-    openReflectModal(hitId);
+  const markHits = reflectRaycaster.intersectObjects(visibleMarks, false);
+  if (markHits.length > 0) {
+    const hitId = markHits[0].object.userData.anxietyId;
+    const anxiety = S.anxieties.find(a => a.id === hitId);
+    if (!anxiety) return;
+    reflectSeenThisSession.delete(hitId);
+    if (anxiety.reflection) {
+      openViewModal(hitId);
+    } else {
+      openReflectModal(hitId);
+    }
+    return;
+  }
+
+  // No mark hit — check columns (active anxieties). Tapping a column lets
+  // you mark it as already passed earlier than expected, which sinks it
+  // into a mark and opens the reflection modal.
+  const visibleColumns = [];
+  for (const c of columnMeshes.values()) {
+    if (c.visible) visibleColumns.push(c);
+  }
+  const colHits = reflectRaycaster.intersectObjects(visibleColumns, false);
+  if (colHits.length > 0) {
+    const hitId = colHits[0].object.userData.anxietyId;
+    openEarlyResolveModal(hitId);
   }
 });
 
@@ -1635,6 +1735,14 @@ function openViewModal(anxietyId) {
   const anxiety = S.anxieties.find(a => a.id === anxietyId);
   if (!anxiety) return;
   viewCurrent = anxietyId;
+  // Show the user-given label if there is one
+  const labelEl = document.getElementById('view-anxiety-label');
+  if (anxiety.label) {
+    labelEl.textContent = anxiety.label;
+    labelEl.style.display = '';
+  } else {
+    labelEl.style.display = 'none';
+  }
   document.getElementById('view-swatch').style.background =
     REFLECT_COLORS[anxiety.reflection] || REFLECT_COLORS.null;
   document.getElementById('view-label').textContent =
@@ -1658,6 +1766,92 @@ document.getElementById('view-edit').addEventListener('click', () => {
   const id = viewCurrent;
   closeViewModal();
   if (id) setTimeout(() => openReflectModal(id), 180);
+});
+
+// ── Early-resolve flow ──
+// Tapping an active column opens this small modal. Confirming sets
+// resolvedAt = now (which immediately sinks the column and shows the mark),
+// then opens the reflection modal so you can record how it actually went.
+let earlyCurrent = null;
+function openEarlyResolveModal(anxietyId) {
+  earlyCurrent = anxietyId;
+  const anxiety = S.anxieties.find(a => a.id === anxietyId);
+  const labelEl = document.getElementById('early-label');
+  if (anxiety && anxiety.label) {
+    labelEl.textContent = anxiety.label;
+    labelEl.style.display = '';
+  } else {
+    labelEl.style.display = 'none';
+  }
+  document.getElementById('early-backdrop').classList.add('active');
+}
+function closeEarlyResolveModal() {
+  earlyCurrent = null;
+  document.getElementById('early-backdrop').classList.remove('active');
+}
+document.getElementById('early-cancel').addEventListener('click', closeEarlyResolveModal);
+document.getElementById('early-confirm').addEventListener('click', () => {
+  if (!earlyCurrent) return closeEarlyResolveModal();
+  const anxiety = S.anxieties.find(a => a.id === earlyCurrent);
+  const id = earlyCurrent;
+  if (anxiety) {
+    anxiety.resolvedAt = nowMs();
+    // Also clear from session-seen so the reflect modal can open right after
+    reflectSeenThisSession.delete(id);
+    persist();
+    // The column's resolvedAt has changed — its userData needs to reflect this
+    // for sinking math and visibility checks. Easiest: rebuild columns.
+    rebuildColumns();
+  }
+  closeEarlyResolveModal();
+  if (id) setTimeout(() => openReflectModal(id), 180);
+});
+
+// ── Extend flow ("This isn't over yet") ──
+// Opens from the reflect modal. Picks a duration to add to resolvedAt,
+// then closes both modals. The column springs back up.
+let extendCurrent = null;
+function openExtendModal(anxietyId) {
+  extendCurrent = anxietyId;
+  document.getElementById('extend-backdrop').classList.add('active');
+}
+function closeExtendModal() {
+  extendCurrent = null;
+  document.getElementById('extend-backdrop').classList.remove('active');
+}
+document.getElementById('extend-cancel').addEventListener('click', closeExtendModal);
+document.querySelectorAll('.extend-option').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (!extendCurrent) return closeExtendModal();
+    const anxiety = S.anxieties.find(a => a.id === extendCurrent);
+    if (anxiety) {
+      const amount = parseInt(btn.dataset.amount);
+      const unit = btn.dataset.unit;
+      // Add the extension to whichever is later: resolvedAt or now.
+      // (If the column had already resolved before extending, we want the
+      // new resolvedAt to be in the future relative to now, not relative
+      // to the old resolved time which may be in the past.)
+      const base = Math.max(anxiety.resolvedAt, nowMs());
+      anxiety.resolvedAt = addDuration(base, amount, unit);
+      // Clear any prior reflection — the event is "active" again
+      anxiety.reflection = null;
+      anxiety.reflectionText = null;
+      reflectSeenThisSession.delete(anxiety.id);
+      persist();
+      rebuildColumns();
+    }
+    closeExtendModal();
+    closeReflectModal();
+  });
+});
+
+// Wire up the "This isn't over yet" link inside the reflect modal
+document.getElementById('reflect-not-over').addEventListener('click', () => {
+  const id = reflectCurrent;
+  if (!id) return;
+  // Don't close the reflect modal yet — the extend modal stacks on top.
+  // After extend is done, both modals close together.
+  openExtendModal(id);
 });
 
 // We want to auto-check proximity right after the first GPS fix, and then
