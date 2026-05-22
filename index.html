@@ -36,6 +36,13 @@ html,body{height:100%;font-family:Georgia,serif;font-size:15px;color:var(--text)
 .archive-toggle.active{background:var(--accent);color:var(--night);border-color:var(--accent)}
 
 .bottom-bar{position:fixed;bottom:0;left:0;right:0;padding:12px 16px 28px;z-index:600;background:linear-gradient(to top,rgba(24,26,31,1) 60%,rgba(24,26,31,0))}
+
+.attribution{
+  position:fixed;bottom:6px;left:10px;z-index:700;
+  font-family:system-ui,sans-serif;font-size:10px;
+  color:var(--text-f);opacity:0.55;pointer-events:none;
+  letter-spacing:.2px;
+}
 .btn-log{display:block;width:100%;max-width:480px;margin:0 auto;padding:17px;background:var(--warn);color:#fff;border:none;border-radius:var(--r-lg);font-family:system-ui,sans-serif;font-size:16px;font-weight:600;cursor:pointer;transition:background .2s,transform .1s;box-shadow:0 4px 20px rgba(232,85,44,.35)}
 .btn-log:hover{background:#d63d4d}
 .btn-log:active{transform:scale(.98)}
@@ -261,6 +268,7 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
   <div class="bottom-bar">
     <button class="btn-log" id="btn-log">I'm feeling anxious — log this</button>
   </div>
+  <div class="attribution">data © OpenStreetMap</div>
 </div>
 
 <!-- ── LOG SCREEN ── -->
@@ -790,9 +798,9 @@ function applyGridShader(material, cellSize, lineWidth, lineColor) {
       console.warn('grid shader: vertex injection failed — no replacements made');
     }
 
-    // Fragment: tint gl_FragColor toward the line colour on grid lines.
-    // We inject before <dithering_fragment>, which runs near the end of the
-    // shader after gl_FragColor has been assembled but before tonemapping.
+    // Fragment: tint gl_FragColor toward the line colour on grid lines,
+    // AND sample the city-map texture (showing real Vienna roads) at the
+    // fragment's world XZ position. Both layers are white on transparent.
     const fBefore = shader.fragmentShader;
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <common>',
@@ -800,24 +808,149 @@ function applyGridShader(material, cellSize, lineWidth, lineColor) {
        varying vec2 vGridXZ;
        uniform float uGridCell;
        uniform float uGridLine;
-       uniform vec3 uGridColor;`
+       uniform vec3 uGridColor;
+       uniform sampler2D uMapTex;
+       uniform int uMapReady;
+       uniform vec2 uMapAnchorLatLng;
+       uniform vec2 uMapAnchorPixel;
+       uniform vec2 uMapMetresPerPx;
+       uniform vec2 uMapSize;
+       uniform vec2 uOriginLatLng;
+       uniform float uMetresPerUnit;`
     ).replace(
       '#include <dithering_fragment>',
-      `// World-space grid: white lines on transparent surface.
-       // gl_FragColor.a is set to 1.0 on lines, 0.0 in the gaps so the
-       // surface effectively disappears between lines.
+      `// ── Sample the city map ──
+       // World XZ → real metres → lat/lng → SVG pixel → UV
+       float metresPerLatDeg = 111000.0;
+       float metresPerLngDeg = 111000.0 * cos(uOriginLatLng.x * 0.01745329);
+       float dxMetres = vGridXZ.x * uMetresPerUnit;
+       float dzMetres = vGridXZ.y * uMetresPerUnit;
+       // World Z increases southward (projectToScene uses -dLat),
+       // so a positive z is lower latitude.
+       float lat = uOriginLatLng.x - (dzMetres / metresPerLatDeg);
+       float lng = uOriginLatLng.y + (dxMetres / metresPerLngDeg);
+       float px = uMapAnchorPixel.x + (lng - uMapAnchorLatLng.y) * (metresPerLngDeg / uMapMetresPerPx.x);
+       float py = uMapAnchorPixel.y - (lat - uMapAnchorLatLng.x) * (metresPerLatDeg / uMapMetresPerPx.y);
+       vec2 uv = vec2(px / uMapSize.x, 1.0 - py / uMapSize.y);
+       float mapAlpha = 0.0;
+       if (uMapReady == 1 && uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
+         vec4 mapSample = texture2D(uMapTex, uv);
+         mapAlpha = mapSample.a * 0.6;
+       }
+
+       // ── Grid lines ──
        vec2 g = fract(vGridXZ / uGridCell);
        float onLine = step(min(g.x, g.y), uGridLine);
+       float gridAlpha = onLine * 0.5;
+
+       // ── Composite ──
        gl_FragColor.rgb = uGridColor;
-       gl_FragColor.a = onLine * 0.2;
+       gl_FragColor.a = max(mapAlpha, gridAlpha);
        #include <dithering_fragment>`
     );
     if (shader.fragmentShader === fBefore) {
       console.warn('grid shader: fragment injection failed — no replacements made');
     }
+    // Stash the shader so we can update its uniforms later
+    material.userData.shader = shader;
   };
   // Important: tell Three.js the shader needs recompiling
   material.needsUpdate = true;
+}
+
+// ── City-map texture ──
+// Loads Wien.svg, rasterises it to a hidden canvas (since WebGL needs raster
+// textures), and uses it as a Three.js CanvasTexture. The texture is sampled
+// in the plane shader so the user's surroundings show real Vienna roads.
+//
+// Calibration uses one geographic anchor + a uniform metres-per-pixel.
+// Anchor: Maria-Theresien-Platz (you measured both the SVG pixel position
+// and the real lat/lng for this point).
+// Scale was derived from a second known point (Prater Riesenrad).
+const MAP_SVG_SIZE      = { x: 3024, y: 1596 };
+const MAP_ANCHOR_PIXEL  = { x: 1391, y: 912 };
+const MAP_ANCHOR_LATLNG = { lat: 48.20453, lng: 16.36081 };
+const MAP_METRES_PER_PX = { x: 16.3, y: 16.6 };
+
+let cityMapTexture = null;
+let cityMapReady = false;
+
+function loadCityMap() {
+  // SVGs can't be used directly as WebGL textures, so we fetch the file,
+  // strip the opaque background rect (so the result is transparent on the
+  // canvas), then load it as an Image and draw it to a canvas at 2× viewBox
+  // size to keep it sharp at typical zoom levels.
+  const img = new Image();
+  img.onload = () => {
+    const scale = 2;
+    const w = Math.round(MAP_SVG_SIZE.x * scale);
+    const h = Math.round(MAP_SVG_SIZE.y * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    cityMapTexture = new THREE.CanvasTexture(canvas);
+    cityMapTexture.minFilter = THREE.LinearFilter;
+    cityMapTexture.magFilter = THREE.LinearFilter;
+    cityMapTexture.needsUpdate = true;
+    cityMapReady = true;
+    applyCityMapUniforms();
+    console.log('city map loaded:', w, '×', h);
+  };
+  img.onerror = (e) => {
+    console.warn('city map: image failed to load', e);
+  };
+  fetch('Wien.svg')
+    .then(r => r.ok ? r.text() : Promise.reject('Wien.svg status ' + r.status))
+    .then(svg => {
+      // Strip the opaque background so the canvas is transparent where roads aren't.
+      const stripped = svg.replace(/<rect id="background"[^>]*\/?>(<\/rect>)?/, '');
+      const blob = new Blob([stripped], { type: 'image/svg+xml' });
+      img.src = URL.createObjectURL(blob);
+    })
+    .catch(err => console.warn('city map: SVG fetch failed —', err));
+}
+
+// Initialise the city-map uniforms on both plane materials. Safe to call
+// repeatedly; missing uniforms get filled in, existing ones preserved.
+function applyCityMapUniforms() {
+  const planes = [plane, farPlane].filter(Boolean);
+  for (const p of planes) {
+    const shader = p.material.userData.shader;
+    if (!shader) continue;
+    shader.uniforms.uMapTex = { value: cityMapTexture };
+    shader.uniforms.uMapReady = { value: cityMapReady ? 1 : 0 };
+    shader.uniforms.uMapAnchorLatLng =
+      { value: new THREE.Vector2(MAP_ANCHOR_LATLNG.lat, MAP_ANCHOR_LATLNG.lng) };
+    shader.uniforms.uMapAnchorPixel =
+      { value: new THREE.Vector2(MAP_ANCHOR_PIXEL.x, MAP_ANCHOR_PIXEL.y) };
+    shader.uniforms.uMapMetresPerPx =
+      { value: new THREE.Vector2(MAP_METRES_PER_PX.x, MAP_METRES_PER_PX.y) };
+    shader.uniforms.uMapSize =
+      { value: new THREE.Vector2(MAP_SVG_SIZE.x, MAP_SVG_SIZE.y) };
+    shader.uniforms.uOriginLatLng = {
+      value: new THREE.Vector2(
+        S.currentPos ? S.currentPos.lat : MAP_ANCHOR_LATLNG.lat,
+        S.currentPos ? S.currentPos.lng : MAP_ANCHOR_LATLNG.lng
+      )
+    };
+    shader.uniforms.uMetresPerUnit = { value: METRES_PER_UNIT_H };
+  }
+}
+
+// Update the shader's idea of where the user is. Call after any GPS update.
+function refreshCityMapOrigin() {
+  if (!S.currentPos) return;
+  const planes = [plane, farPlane].filter(Boolean);
+  for (const p of planes) {
+    const shader = p.material.userData.shader;
+    if (!shader || !shader.uniforms.uOriginLatLng) {
+      applyCityMapUniforms();
+      return;
+    }
+    shader.uniforms.uOriginLatLng.value.set(S.currentPos.lat, S.currentPos.lng);
+  }
 }
 
 function initThree() {
@@ -1174,7 +1307,7 @@ function setMarkReflection(anxietyId, reflection) {
 // Rebuild all columns from scratch based on the active dataset.
 // Call this whenever the data set changes (mode toggle, new anxiety, etc.).
 function rebuildColumns() {
-  // Dispose old columns + marks
+  // Dispose old columns and marks
   for (const m of columnMeshes.values()) {
     if (m.geometry) m.geometry.dispose();
     if (m.material) m.material.dispose();
@@ -1204,7 +1337,7 @@ function rebuildColumns() {
 
     const mark = makeMark(a);
     mark.position.x = px;
-    mark.position.y = 0.05;     // just above the plane to avoid z-fight
+    mark.position.y = 0.05;
     mark.position.z = pz;
     scene.add(mark);
     markMeshes.set(a.id, mark);
@@ -1236,7 +1369,6 @@ function updateColumnPositions() {
     }
   }
   // Marks: visible only once the anxiety has resolved (simNow > resolvedAt).
-  // Scrubbing back hides the mark; the column reappears.
   for (const mark of markMeshes.values()) {
     mark.visible = mark.userData.resolvedAt <= simNow;
   }
@@ -1286,6 +1418,9 @@ function startWatch() {
           Math.abs(prev.lng - S.currentPos.lng) > 0.00001) {
         rebuildColumns();
       }
+      // Tell the plane shader where we are, so the city map stays anchored
+      // to Vienna rather than sliding with the camera.
+      refreshCityMapOrigin();
       // Check whether we're near any unreflected resolved anxieties
       if (typeof checkReflectProximity === 'function') checkReflectProximity();
     },
@@ -1326,6 +1461,7 @@ function whenSized(el, cb, maxTries=60) {
 whenSized(document.getElementById('three-canvas'), () => {
   initThree();
   startWatch();
+  loadCityMap();
 });
 
 // ── Events: log flow ───────────────────────────────────────────
