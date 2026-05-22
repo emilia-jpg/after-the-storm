@@ -36,6 +36,13 @@ html,body{height:100%;font-family:Georgia,serif;font-size:15px;color:var(--text)
 .archive-toggle.active{background:var(--accent);color:var(--night);border-color:var(--accent)}
 
 .bottom-bar{position:fixed;bottom:0;left:0;right:0;padding:12px 16px 28px;z-index:600;background:linear-gradient(to top,rgba(24,26,31,1) 60%,rgba(24,26,31,0))}
+
+.attribution{
+  position:fixed;bottom:6px;left:10px;z-index:700;
+  font-family:system-ui,sans-serif;font-size:10px;
+  color:var(--text-f);opacity:0.55;pointer-events:none;
+  letter-spacing:.2px;
+}
 .btn-log{display:block;width:100%;max-width:480px;margin:0 auto;padding:17px;background:var(--warn);color:#fff;border:none;border-radius:var(--r-lg);font-family:system-ui,sans-serif;font-size:16px;font-weight:600;cursor:pointer;transition:background .2s,transform .1s;box-shadow:0 4px 20px rgba(232,85,44,.35)}
 .btn-log:hover{background:#d63d4d}
 .btn-log:active{transform:scale(.98)}
@@ -261,6 +268,7 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
   <div class="bottom-bar">
     <button class="btn-log" id="btn-log">I'm feeling anxious — log this</button>
   </div>
+  <div class="attribution">data © OpenStreetMap</div>
 </div>
 
 <!-- ── LOG SCREEN ── -->
@@ -476,7 +484,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Replace these two values with your project's URL and anon key.
 // They're safe to put in client-side code: Row Level Security
 // in the database controls what they can do.
-const SUPABASE_URL = 'Yhttps://jpgotzihotnifhldjqpa.supabase.co;        // e.g. https://xxxxx.supabase.co
+const SUPABASE_URL = 'https://jpgotzihotnifhldjqpa.supabase.co';        // e.g. https://xxxxx.supabase.co
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwZ290emlob3RuaWZobGRqcXBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMDY1NjAsImV4cCI6MjA5NDY4MjU2MH0.vTt4SPjE4op9plhlAhDjnwsB29ENeQHPf75w7cxLeYU';
 
 // True when both config values are set to something real
@@ -1266,123 +1274,6 @@ function reflectColor(reflection) {
   return new THREE.Color(REFLECT_COLORS[reflection || null] || REFLECT_COLORS.null);
 }
 
-// ── Sphere (floating reflection orb) ──
-// A pulsing, slowly-deforming sphere that hovers above a mark once the
-// user has reflected. Materialises from the act of reflection.
-// Adapted from a Shadertoy-style snippet: trig "noise" displacement in the
-// vertex shader + a fresnel/emissive mix in the fragment shader, driven by
-// the mark's reflection colour.
-const SPHERE_RADIUS = 5;              // ~3m real-world (smaller than the 5m mark)
-const SPHERE_FLOAT_Y = 6;             // ~3.6m hover height above the ground
-
-// Glowing spheres tied to reflected marks. Created on reflection, removed
-// when the reflection is cleared (e.g. by "this isn't over yet").
-const sphereMeshes = new Map();   // anxiety.id → { mesh, material }
-
-function makeSphere(anxiety) {
-  const colorHex = REFLECT_COLORS[anxiety.reflection] || REFLECT_COLORS.null;
-  const base = new THREE.Color(colorHex);
-  // Three colour variants the shader expects, derived from the chosen colour
-  const rim = base.clone().lerp(new THREE.Color(0xffffff), 0.4);
-  const inner = base.clone().multiplyScalar(0.18);
-
-  const geo = new THREE.SphereGeometry(SPHERE_RADIUS, 64, 64);
-  const mat = new THREE.ShaderMaterial({
-    uniforms: {
-      uTime: { value: 0 },
-      uBase: { value: base.clone() },
-      uRim: { value: rim },
-      uInner: { value: inner },
-    },
-    vertexShader: `
-      uniform float uTime;
-      varying vec3 vNormal;
-      varying vec3 vPos;
-      void main(){
-        vec3 p = position;
-        float t = uTime;
-        float n1 = sin(p.x*2.1+t*0.9)*sin(p.y*1.8+t*0.7)*sin(p.z*2.3+t*0.5);
-        float n2 = sin(p.y*3.2+t*1.1)*cos(p.z*2.7+t*0.8)*0.5;
-        float n3 = cos(p.x*1.7+t*0.6)*sin(p.z*2.1+t*1.2)*cos(p.y*1.5+t*0.4)*0.4;
-        float n4 = sin((p.x+p.y+p.z)*2.0+t*1.5)*0.25;
-        float blobPull = sin(t*0.4)*0.3;
-        float elongate = 1.0 + sin(t*0.35)*0.15;
-        float disp = (n1*0.22 + n2*0.15 + n3*0.13 + n4*0.1);
-        disp += sin(p.y*2.5+t*0.5)*0.08*blobPull;
-        vec3 newPos = position + normal * disp;
-        newPos.y *= elongate;
-        vNormal = normalize(normalMatrix * normal);
-        vPos = newPos;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(newPos, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform float uTime;
-      uniform vec3 uBase;
-      uniform vec3 uRim;
-      uniform vec3 uInner;
-      varying vec3 vNormal;
-      varying vec3 vPos;
-      void main(){
-        vec3 n = normalize(vNormal);
-        vec3 viewDir = normalize(cameraPosition - vPos);
-        float fresnel = pow(1.0 - max(dot(n, viewDir), 0.0), 3.0);
-        float pulse = 0.5 + 0.5*sin(uTime*1.2);
-        vec3 emissive = uBase * (0.4 + pulse*0.15);
-        float light = max(dot(n, normalize(vec3(1.0, 1.5, 1.0))), 0.0);
-        float light2 = max(dot(n, normalize(vec3(-1.0, -0.5, 0.5))), 0.0)*0.4;
-        vec3 col = mix(uInner, uBase, light + light2*0.5);
-        col += uRim * fresnel * 0.6;
-        col += emissive;
-        float alpha = 0.1 + fresnel * 0.3;
-        gl_FragColor = vec4(col, alpha);
-      }
-    `,
-    transparent: true,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-    toneMapped: false,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.userData = { anxietyId: anxiety.id };
-  return { mesh, material: mat };
-}
-
-// Set the sphere for an anxiety to reflect a given colour.
-// Pass reflection=null to remove the sphere entirely.
-function setSphereReflection(anxietyId, reflection, position) {
-  const existing = sphereMeshes.get(anxietyId);
-  if (!reflection) {
-    if (existing) {
-      existing.mesh.geometry.dispose();
-      existing.material.dispose();
-      scene.remove(existing.mesh);
-      sphereMeshes.delete(anxietyId);
-    }
-    return;
-  }
-  if (existing) {
-    // Update colour uniforms in place
-    const base = new THREE.Color(REFLECT_COLORS[reflection]);
-    existing.material.uniforms.uBase.value.copy(base);
-    existing.material.uniforms.uRim.value
-      .copy(base).lerp(new THREE.Color(0xffffff), 0.4);
-    existing.material.uniforms.uInner.value
-      .copy(base).multiplyScalar(0.18);
-    return;
-  }
-  // Create a new sphere
-  const anxiety = activeDataset().find(a => a.id === anxietyId);
-  if (!anxiety) return;
-  const { mesh, material } = makeSphere({ ...anxiety, reflection });
-  if (position) {
-    mesh.position.copy(position);
-    mesh.position.y = SPHERE_FLOAT_Y;
-  }
-  scene.add(mesh);
-  sphereMeshes.set(anxietyId, { mesh, material });
-}
-
 function makeMark(anxiety) {
   const markRadius = 8.33;  // same as column radius (5m real-world)
   const geo = new THREE.CircleGeometry(markRadius, 32);
@@ -1406,26 +1297,17 @@ function makeMark(anxiety) {
 }
 
 // Update an existing mark's colour without rebuilding the whole scene.
-// Also creates/updates/removes the floating sphere above it.
 function setMarkReflection(anxietyId, reflection) {
   const mark = markMeshes.get(anxietyId);
   if (!mark) return;
   mark.material.color.copy(reflectColor(reflection));
   mark.userData.reflection = reflection;
-  // Sphere positioned directly above the mark
-  const pos = new THREE.Vector3(mark.position.x, SPHERE_FLOAT_Y, mark.position.z);
-  setSphereReflection(anxietyId, reflection, pos);
-  // Sphere is only meaningful when the mark is also visible. The visibility
-  // toggle in updateColumnPositions handles ongoing changes; this just sets
-  // an initial state matching the mark.
-  const sphere = sphereMeshes.get(anxietyId);
-  if (sphere) sphere.mesh.visible = mark.visible;
 }
 
 // Rebuild all columns from scratch based on the active dataset.
 // Call this whenever the data set changes (mode toggle, new anxiety, etc.).
 function rebuildColumns() {
-  // Dispose old columns, marks, and spheres
+  // Dispose old columns and marks
   for (const m of columnMeshes.values()) {
     if (m.geometry) m.geometry.dispose();
     if (m.material) m.material.dispose();
@@ -1438,12 +1320,6 @@ function rebuildColumns() {
     scene.remove(m);
   }
   markMeshes.clear();
-  for (const s of sphereMeshes.values()) {
-    s.mesh.geometry.dispose();
-    s.material.dispose();
-    scene.remove(s.mesh);
-  }
-  sphereMeshes.clear();
 
   if (!S.currentPos) return;
 
@@ -1465,15 +1341,6 @@ function rebuildColumns() {
     mark.position.z = pz;
     scene.add(mark);
     markMeshes.set(a.id, mark);
-
-    // If this anxiety already has a reflection (from a previous session),
-    // create its sphere now. Visibility is managed in updateColumnPositions.
-    if (a.reflection) {
-      const { mesh, material } = makeSphere(a);
-      mesh.position.set(px, SPHERE_FLOAT_Y, pz);
-      scene.add(mesh);
-      sphereMeshes.set(a.id, { mesh, material });
-    }
   }
   updateColumnPositions();
 }
@@ -1502,12 +1369,8 @@ function updateColumnPositions() {
     }
   }
   // Marks: visible only once the anxiety has resolved (simNow > resolvedAt).
-  // Spheres follow the same rule (they only exist for resolved + reflected ones).
   for (const mark of markMeshes.values()) {
-    const visible = mark.userData.resolvedAt <= simNow;
-    mark.visible = visible;
-    const sphere = sphereMeshes.get(mark.userData.anxietyId);
-    if (sphere) sphere.mesh.visible = visible;
+    mark.visible = mark.userData.resolvedAt <= simNow;
   }
 }
 
@@ -1531,12 +1394,6 @@ function animate() {
   if (t - lastNowUpdate > 250) {
     lastNowUpdate = t;
     deformPlane();
-  }
-  // Sphere shaders need uTime updated every frame for smooth animation.
-  // Convert performance.now() (ms) to seconds since some arbitrary moment.
-  const tSec = t * 0.001;
-  for (const s of sphereMeshes.values()) {
-    if (s.mesh.visible) s.material.uniforms.uTime.value = tSec;
   }
   controls.update();
   composer.render();
