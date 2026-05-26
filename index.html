@@ -35,7 +35,7 @@ html,body{height:100%;font-family:Georgia,serif;font-size:15px;color:var(--text)
 .archive-toggle:hover{background:rgba(95,184,154,.2);color:var(--text)}
 .archive-toggle.active{background:var(--accent);color:var(--night);border-color:var(--accent)}
 
-.bottom-bar{position:fixed;bottom:0;left:0;right:0;padding:12px 16px 28px;z-index:600;background:linear-gradient(to top,rgba(24,26,31,1) 60%,rgba(24,26,31,0))}
+.bottom-bar{position:fixed;bottom:0;left:0;right:0;padding:12px 16px 28px;z-index:600;background:linear-gradient(to top,rgba(255,255,255,1) 60%,rgba(255,255,255,0))}
 
 .btn-log{display:block;width:100%;max-width:480px;margin:0 auto;padding:17px;background:var(--warn);color:#fff;border:none;border-radius:var(--r-lg);font-family:system-ui,sans-serif;font-size:16px;font-weight:600;cursor:pointer;transition:background .2s,transform .1s;box-shadow:0 4px 20px rgba(232,85,44,.35)}
 .btn-log:hover{background:#d63d4d}
@@ -427,15 +427,15 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
       <p class="section-help">Pick the version of your future self that feels possible right now.</p>
       <div class="reflect-options" id="prior-options">
         <button class="reflect-option" data-value="better">
-          <span class="reflect-swatch" style="background:#5fb89a"></span>
+          <span class="reflect-swatch" style="background:#2ea275"></span>
           <span>Better than I'd hoped</span>
         </button>
         <button class="reflect-option" data-value="same">
-          <span class="reflect-swatch" style="background:#e6c947"></span>
+          <span class="reflect-swatch" style="background:#e8b71b"></span>
           <span>About what I'd imagined</span>
         </button>
         <button class="reflect-option" data-value="worse">
-          <span class="reflect-swatch" style="background:#3a4a7e"></span>
+          <span class="reflect-swatch" style="background:#2a3a8c"></span>
           <span>Harder than I'd anticipated</span>
         </button>
       </div>
@@ -504,15 +504,15 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
 
     <div class="reflect-options" id="reflect-options">
       <button class="reflect-option" data-value="better">
-        <span class="reflect-swatch" style="background:#5fb89a"></span>
+        <span class="reflect-swatch" style="background:#2ea275"></span>
         <span>Better than I expected</span>
       </button>
       <button class="reflect-option" data-value="same">
-        <span class="reflect-swatch" style="background:#e6c947"></span>
+        <span class="reflect-swatch" style="background:#e8b71b"></span>
         <span>About what I expected</span>
       </button>
       <button class="reflect-option" data-value="worse">
-        <span class="reflect-swatch" style="background:#3a4a7e"></span>
+        <span class="reflect-swatch" style="background:#2a3a8c"></span>
         <span>Worse than I expected</span>
       </button>
     </div>
@@ -958,7 +958,7 @@ function initThree() {
   const planeMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     emissive: 0xffffff,
-    emissiveIntensity: 0.45,
+    emissiveIntensity: 0.75,
     toneMapped: false,
     transparent: false,
     opacity: 1.0,
@@ -1000,7 +1000,7 @@ function initThree() {
   const farMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     emissive: 0xffffff,
-    emissiveIntensity: 0.45,
+    emissiveIntensity: 0.75,
     toneMapped: false,
     transparent: false,
     opacity: 1.0,
@@ -1095,9 +1095,9 @@ function columnFullHeight(durationMs) {
 // short one. Older anxieties without a priorExpectation use a neutral grey
 // pair so they still appear visible against the white background.
 const COLUMN_GRADIENTS = {
-  better: { near: new THREE.Color('#3d8e75'), far: new THREE.Color('#8fd0b3') },
-  same:   { near: new THREE.Color('#c4a52e'), far: new THREE.Color('#f0d97a') },
-  worse:  { near: new THREE.Color('#262f56'), far: new THREE.Color('#6677ab') },
+  better: { near: new THREE.Color('#1d7a55'), far: new THREE.Color('#74cda1') },
+  same:   { near: new THREE.Color('#b8860c'), far: new THREE.Color('#f0d54a') },
+  worse:  { near: new THREE.Color('#1c2a6a'), far: new THREE.Color('#5d6fb6') },
   null:   { near: new THREE.Color('#7a7e88'), far: new THREE.Color('#c2c5cb') },
 };
 function columnGradientStops(priorExpectation) {
@@ -1151,6 +1151,9 @@ function makeColumn(anxiety) {
     roughness: 1.0,
     metalness: 0,
     side: THREE.FrontSide,
+    transparent: true,
+    opacity: 0.4,
+    depthWrite: false,
   });
   // Shader injection: hard cut at world Y = 0. Above = bright vertex colour,
   // below = flat grey (the "past archive" look from before).
@@ -1205,9 +1208,9 @@ const markMeshes = new Map();     // anxiety.id → flat disc mesh
 // blue/indigo = worse/pessimistic.
 const REFLECT_COLORS = {
   null:    '#ffffff',  // unreflected / no prior — clean white slate
-  better:  '#5fb89a',  // sage green
-  same:    '#e6c947',  // warm yellow
-  worse:   '#3a4a7e',  // deep indigo (was 'harder' before — same colour, neutral wording)
+  better:  '#2ea275',  // saturated green
+  same:    '#e8b71b',  // saturated gold
+  worse:   '#2a3a8c',  // saturated deep blue
 };
 const REFLECT_LABELS = {
   better: 'Better than I expected',
@@ -1297,8 +1300,7 @@ function makeMark(anxiety) {
     transparent: true,
     opacity: 1.0,
     depthWrite: false,
-    // toneMapped left at default (true) so the bright bloom pass doesn't
-    // wash the gradient out toward white.
+    toneMapped: false,
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.userData = {
