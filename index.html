@@ -608,7 +608,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // They're safe to put in client-side code: Row Level Security
 // in the database controls what they can do.
 const SUPABASE_URL = 'https://jpgotzihotnifhldjqpa.supabase.co';        // e.g. https://xxxxx.supabase.co
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwZ290emlob3RuaWZobGRqcXBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMDY1NjAsImV4cCI6MjA5NDY4MjU2MH0.vTt4SPjE4op9plhlAhDjnwsB29ENeQHPf75w7cxLeYU';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwZ290emlob3RuaWZobGRqcXBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMDY1NjAsImV4cCI6MjA5NDY4MjU2MH0.vTt4SPjE4op9plhlAhDjnwsB29ENeQHPf75w7cxLeYU
+';
 
 // True when both config values are set to something real
 const SUPABASE_CONFIGURED =
@@ -1152,7 +1153,7 @@ function makeColumn(anxiety) {
     metalness: 0,
     side: THREE.FrontSide,
     transparent: true,
-    opacity: 0.4,
+    opacity: 0.75,
     depthWrite: false,
   });
   // Shader injection: hard cut at world Y = 0. Above = bright vertex colour,
