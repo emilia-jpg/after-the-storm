@@ -1152,14 +1152,13 @@ function makeColumn(anxiety) {
     metalness: 0,
     side: THREE.FrontSide,
     transparent: true,
-    opacity: 0.85,  // try 0.5, 0.8, etc
+    opacity: 0.9,
     depthWrite: false,
   });
-  // Shader injection: hard cut at world Y = 0. Above = bright vertex colour,
-  // below = flat grey (the "past archive" look from before).
-  // Shader injection: discard any fragment below the present plane (y=0).
-  // The column "disappears" cleanly as it sinks rather than persisting as a
-  // greyed past-archive.
+  // Shader injection: discard fragments below the present plane (so the
+  // column visibly shrinks as it sinks), and add a self-emissive contribution
+  // in the column's own vertex colour so it glows in its hue against the
+  // white scene.
   mat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader.replace(
       '#include <common>',
@@ -1176,10 +1175,8 @@ function makeColumn(anxiety) {
        varying float vWorldY;`
     ).replace(
       '#include <emissivemap_fragment>',
-      // Discard fragments below the present plane (so the column visibly
-      // shrinks as it sinks). No emissive boost — on the white background the
-      // diffuse vertex colour reads better without self-illumination.
-      `if (vWorldY < 0.0) discard;`
+      `if (vWorldY < 0.0) discard;
+       totalEmissiveRadiance += vColor * 0.3;`
     );
   };
 
@@ -1294,12 +1291,17 @@ function makeMark(anxiety) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
-  const mat = new THREE.MeshBasicMaterial({
+  const mat = new THREE.MeshStandardMaterial({
     map: texture,
+    emissiveMap: texture,
+    emissive: 0xffffff,         // multiplied by emissiveMap, so emission = texture colour
+    emissiveIntensity: 0.3,     // matches the column self-glow recipe
+    roughness: 1.0,
+    metalness: 0,
+    side: THREE.FrontSide,
     transparent: true,
     opacity: 1.0,
     depthWrite: false,
-    toneMapped: false,
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.userData = {
