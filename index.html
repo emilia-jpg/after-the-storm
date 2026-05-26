@@ -427,15 +427,15 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
       <p class="section-help">Pick the version of your future self that feels possible right now.</p>
       <div class="reflect-options" id="prior-options">
         <button class="reflect-option" data-value="better">
-          <span class="reflect-swatch" style="background:#2ea275"></span>
+          <span class="reflect-swatch" style="background:#1db075"></span>
           <span>Better than I'd hoped</span>
         </button>
         <button class="reflect-option" data-value="same">
-          <span class="reflect-swatch" style="background:#e8b71b"></span>
+          <span class="reflect-swatch" style="background:#e6d944"></span>
           <span>About what I'd imagined</span>
         </button>
         <button class="reflect-option" data-value="worse">
-          <span class="reflect-swatch" style="background:#2a3a8c"></span>
+          <span class="reflect-swatch" style="background:#6854da"></span>
           <span>Harder than I'd anticipated</span>
         </button>
       </div>
@@ -504,15 +504,15 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
 
     <div class="reflect-options" id="reflect-options">
       <button class="reflect-option" data-value="better">
-        <span class="reflect-swatch" style="background:#2ea275"></span>
+        <span class="reflect-swatch" style="background:#1db075"></span>
         <span>Better than I expected</span>
       </button>
       <button class="reflect-option" data-value="same">
-        <span class="reflect-swatch" style="background:#e8b71b"></span>
+        <span class="reflect-swatch" style="background:#e6d944"></span>
         <span>About what I expected</span>
       </button>
       <button class="reflect-option" data-value="worse">
-        <span class="reflect-swatch" style="background:#2a3a8c"></span>
+        <span class="reflect-swatch" style="background:#6854da"></span>
         <span>Worse than I expected</span>
       </button>
     </div>
@@ -608,8 +608,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // They're safe to put in client-side code: Row Level Security
 // in the database controls what they can do.
 const SUPABASE_URL = 'https://jpgotzihotnifhldjqpa.supabase.co';        // e.g. https://xxxxx.supabase.co
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwZ290emlob3RuaWZobGRqcXBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMDY1NjAsImV4cCI6MjA5NDY4MjU2MH0.vTt4SPjE4op9plhlAhDjnwsB29ENeQHPf75w7cxLeYU
-';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwZ290emlob3RuaWZobGRqcXBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMDY1NjAsImV4cCI6MjA5NDY4MjU2MH0.vTt4SPjE4op9plhlAhDjnwsB29ENeQHPf75w7cxLeYU';
 
 // True when both config values are set to something real
 const SUPABASE_CONFIGURED =
@@ -1096,9 +1095,9 @@ function columnFullHeight(durationMs) {
 // short one. Older anxieties without a priorExpectation use a neutral grey
 // pair so they still appear visible against the white background.
 const COLUMN_GRADIENTS = {
-  better: { near: new THREE.Color('#1d7a55'), far: new THREE.Color('#74cda1') },
-  same:   { near: new THREE.Color('#b8860c'), far: new THREE.Color('#f0d54a') },
-  worse:  { near: new THREE.Color('#1c2a6a'), far: new THREE.Color('#5d6fb6') },
+  better: { near: new THREE.Color('#176555'), far: new THREE.Color('#1db075') },
+  same:   { near: new THREE.Color('#b89214'), far: new THREE.Color('#e6d944') },
+  worse:  { near: new THREE.Color('#311f83'), far: new THREE.Color('#6854da') },
   null:   { near: new THREE.Color('#7a7e88'), far: new THREE.Color('#c2c5cb') },
 };
 function columnGradientStops(priorExpectation) {
@@ -1152,9 +1151,6 @@ function makeColumn(anxiety) {
     roughness: 1.0,
     metalness: 0,
     side: THREE.FrontSide,
-    transparent: true,
-    opacity: 1.0,
-    depthWrite: false,
   });
   // Shader injection: hard cut at world Y = 0. Above = bright vertex colour,
   // below = flat grey (the "past archive" look from before).
@@ -1209,9 +1205,9 @@ const markMeshes = new Map();     // anxiety.id → flat disc mesh
 // blue/indigo = worse/pessimistic.
 const REFLECT_COLORS = {
   null:    '#ffffff',  // unreflected / no prior — clean white slate
-  better:  '#2ea275',  // saturated green
-  same:    '#e8b71b',  // saturated gold
-  worse:   '#2a3a8c',  // saturated deep blue
+  better:  '#1db075',  // green
+  same:    '#e6d944',  // yellow
+  worse:   '#6854da',  // blue
 };
 const REFLECT_LABELS = {
   better: 'Better than I expected',
@@ -1273,7 +1269,6 @@ function makeMarkCanvas(priorColor, reflectionColor) {
   const outer = reflectionColor || '#ffffff';
   const g = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
   g.addColorStop(0, inner);
-  g.addColorStop(0.55, inner);  // hold the prior colour briefly in the centre
   g.addColorStop(1, outer);
   ctx.fillStyle = g;
   // Clip to a circle so the mark is round, not square
