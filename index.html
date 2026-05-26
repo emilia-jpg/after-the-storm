@@ -910,8 +910,8 @@ function initThree() {
   renderer.toneMappingExposure = 1.05;
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x181a1f);
-  scene.fog = new THREE.Fog(0x181a1f, 3500, 10000);
+  scene.background = new THREE.Color(0xffffff);
+  scene.fog = new THREE.Fog(0xffffff, 3500, 10000);
 
   camera = new THREE.PerspectiveCamera(45, w0/h0, 0.1, 15000);
   camera.position.set(80, 120, 130);
@@ -929,14 +929,22 @@ function initThree() {
   // Lighting: low-angled key light from one side gives bumps a clear
   // bright/shadowed contrast. Ambient is kept very low so shadows are pronounced;
   // a faint cool fill from the opposite side prevents the dark sides from
-  // turning to pure black.
-  scene.add(new THREE.AmbientLight(0xffffff, 0.12));
-  const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-  sun.position.set(120, 25, 60);   // low and to the side — long shadows
+  // Lighting: a single overhead light shining straight down, plus enough
+  // ambient to keep shadowed undersides from going grey. On the white
+  // environment we want even illumination, no warm/cool bias from side
+  // lights.
+  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+  sun.position.set(0, 200, 0);    // straight down from above
+  sun.target.position.set(0, 0, 0);
   scene.add(sun);
-  const fill = new THREE.DirectionalLight(0xb0c4d8, 0.18);
-  fill.position.set(-80, 30, -40);
-  scene.add(fill);
+  scene.add(sun.target);
+  // A very gentle white side-fill — just enough to give the columns
+  // a faint shaded side so they read as 3D forms, without tinting them
+  // or creating long shadows.
+  const sideFill = new THREE.DirectionalLight(0xffffff, 0.25);
+  sideFill.position.set(120, 60, 80);
+  scene.add(sideFill);
 
   // ── Detail plane (disc-shaped, close-up of your immediate area) ─────
   // Built as a disc with the same outer radius as the annulus' inner radius,
@@ -950,7 +958,7 @@ function initThree() {
   const planeMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     emissive: 0xffffff,
-    emissiveIntensity: 0.03,
+    emissiveIntensity: 0.45,
     toneMapped: false,
     transparent: false,
     opacity: 1.0,
@@ -992,7 +1000,7 @@ function initThree() {
   const farMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     emissive: 0xffffff,
-    emissiveIntensity: 0.03,
+    emissiveIntensity: 0.45,
     toneMapped: false,
     transparent: false,
     opacity: 1.0,
@@ -1024,7 +1032,7 @@ function initThree() {
   composer.addPass(new RenderPass(scene, camera));
   composer.addPass(new UnrealBloomPass(
     new THREE.Vector2(w0, h0),
-    0.25, 0.8, 0.85
+    0.0, 0.8, 0.85
   ));
   composer.addPass(new OutputPass());
 
@@ -1079,30 +1087,21 @@ function columnFullHeight(durationMs) {
   return HEIGHT_K * Math.log(1 + durationMs / HEIGHT_TAU_MS);
 }
 
-// Time-position colour gradient (offset in ms from now to the column's bottom).
-// Anchors: 0 amber, 1h orange, 1d coral, 1w magenta, 1mo periwinkle, 1y sage, 5y deep teal.
-const TIME_STOPS = [
-  { ms: 0,                              color: new THREE.Color('#f9b13a') },
-  { ms: 60 * 60 * 1000,                 color: new THREE.Color('#f48a3a') },
-  { ms: 24 * 60 * 60 * 1000,            color: new THREE.Color('#e2588a') },
-  { ms: 7 * 24 * 60 * 60 * 1000,        color: new THREE.Color('#b566c4') },
-  { ms: 30 * 24 * 60 * 60 * 1000,       color: new THREE.Color('#7e6dd1') },
-  { ms: 365 * 24 * 60 * 60 * 1000,      color: new THREE.Color('#5fb89a') },
-  { ms: 5 * 365 * 24 * 60 * 60 * 1000,  color: new THREE.Color('#1e7060') },
-];
-function timeGradientColor(tMs) {
-  if (tMs <= TIME_STOPS[0].ms) return TIME_STOPS[0].color;
-  for (let i = 0; i < TIME_STOPS.length - 1; i++) {
-    const a = TIME_STOPS[i], b = TIME_STOPS[i+1];
-    if (tMs <= b.ms) {
-      const logA = Math.log(Math.max(1, a.ms));
-      const logB = Math.log(b.ms);
-      const logT = Math.log(Math.max(1, tMs));
-      const t = (logT - logA) / (logB - logA);
-      return a.color.clone().lerp(b.color, Math.max(0, Math.min(1, t)));
-    }
-  }
-  return TIME_STOPS[TIME_STOPS.length - 1].color;
+// Column colour: based on the user's prior expectation (the future-self colour
+// they picked when logging). A subtle gradient runs from a deeper hue at the
+// bottom (near-present, urgent end) to a lighter hue at the top (far-future
+// end), staying within the same colour family. So a green column is always
+// recognisably green; a long column just shows more of the gradient than a
+// short one. Older anxieties without a priorExpectation use a neutral grey
+// pair so they still appear visible against the white background.
+const COLUMN_GRADIENTS = {
+  better: { near: new THREE.Color('#3d8e75'), far: new THREE.Color('#8fd0b3') },
+  same:   { near: new THREE.Color('#c4a52e'), far: new THREE.Color('#f0d97a') },
+  worse:  { near: new THREE.Color('#262f56'), far: new THREE.Color('#6677ab') },
+  null:   { near: new THREE.Color('#7a7e88'), far: new THREE.Color('#c2c5cb') },
+};
+function columnGradientStops(priorExpectation) {
+  return COLUMN_GRADIENTS[priorExpectation || null] || COLUMN_GRADIENTS.null;
 }
 
 // Deterministic small offset per anxiety so multiple columns at the same
@@ -1130,26 +1129,25 @@ function makeColumn(anxiety) {
   // Pivot so origin is at the BOTTOM of the cylinder (createdAt time)
   geo.translate(0, totalHeight / 2, 0);
 
-  // Per-vertex colours along the height: bottom = createdAt offset,
-  // top = resolvedAt offset (from now). We bake the colours assuming
-  // "now" is the column's createdAt — i.e. local y maps to time-from-creation.
-  // The dimming-past effect uses world Y in the shader, so the gradient stays
-  // baked while the column physically sinks.
+  // Per-vertex colours along the height. Bottom of the cylinder = present-end
+  // (the urgent, "near" part of the future). Top = the furthest moment in time
+  // the user named. Both endpoints stay within the colour family of their
+  // prior expectation, so a green column always reads as green.
+  const stops = columnGradientStops(anxiety.priorExpectation);
   const positions = geo.attributes.position;
   const colors = new Float32Array(positions.count * 3);
   for (let i = 0; i < positions.count; i++) {
     const yLocal = positions.getY(i);          // 0 .. totalHeight
-    const tMs = (yLocal / totalHeight) * totalMs;
-    const c = timeGradientColor(tMs);
+    const t = totalHeight > 0 ? (yLocal / totalHeight) : 0;
+    const c = stops.near.clone().lerp(stops.far, Math.max(0, Math.min(1, t)));
     colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true,
-    emissive: 0xffffff,
+    emissive: 0x000000,
     emissiveIntensity: 0.0,
-    toneMapped: false,
     roughness: 1.0,
     metalness: 0,
     side: THREE.FrontSide,
@@ -1175,9 +1173,10 @@ function makeColumn(anxiety) {
        varying float vWorldY;`
     ).replace(
       '#include <emissivemap_fragment>',
-      // Make the visible portion brightly emissive in its vertex colour
-      `if (vWorldY < 0.0) discard;
-       totalEmissiveRadiance += vColor * 0.7;`
+      // Discard fragments below the present plane (so the column visibly
+      // shrinks as it sinks). No emissive boost — on the white background the
+      // diffuse vertex colour reads better without self-illumination.
+      `if (vWorldY < 0.0) discard;`
     );
   };
 
@@ -1296,9 +1295,10 @@ function makeMark(anxiety) {
   const mat = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
-    opacity: 0.7,
+    opacity: 1.0,
     depthWrite: false,
-    toneMapped: false,
+    // toneMapped left at default (true) so the bright bloom pass doesn't
+    // wash the gradient out toward white.
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.userData = {
