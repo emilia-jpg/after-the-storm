@@ -15,11 +15,13 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --night:#181a1f;--night-2:#22252c;--night-3:#2d3038;
-  --text:#e8e8e0;--text-m:#bdbdb4;--text-f:#7a7a72;
-  --border:rgba(255,255,255,.1);
-  --accent:#5fb89a;--accent-d:#3a8a72;
-  --warn:#e8552c;
+  /* "Night" vars now represent the light surfaces (kept the var names so the
+     rest of the CSS still works without renaming). */
+  --night:#ffffff;--night-2:#f7f7f5;--night-3:#eeeeea;
+  --text:#1d1d1b;--text-m:#5b5b56;--text-f:#9a9a92;
+  --border:rgba(0,0,0,.12);
+  --accent:#1db075;--accent-d:#176555;
+  --warn:#c0443b;
   --r:14px;--r-sm:8px;--r-lg:22px;
 }
 html,body{height:100%;font-family:Georgia,serif;font-size:15px;color:var(--text);background:var(--night);overflow:hidden}
@@ -31,18 +33,18 @@ html,body{height:100%;font-family:Georgia,serif;font-size:15px;color:var(--text)
 #screen-main{overflow:hidden;background:var(--night)}
 #three-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 
-.archive-toggle{position:absolute;top:16px;right:14px;background:rgba(34,37,44,.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--border);color:var(--text-m);padding:9px 14px;border-radius:11px;cursor:pointer;font-family:system-ui,sans-serif;font-size:12px;z-index:500;display:flex;align-items:center;gap:6px;transition:color .2s,background .2s}
-.archive-toggle:hover{background:rgba(95,184,154,.2);color:var(--text)}
-.archive-toggle.active{background:var(--accent);color:var(--night);border-color:var(--accent)}
+.archive-toggle{position:absolute;top:16px;right:14px;background:rgba(255,255,255,.78);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--border);color:var(--text-m);padding:9px 14px;border-radius:11px;cursor:pointer;font-family:system-ui,sans-serif;font-size:12px;z-index:500;display:flex;align-items:center;gap:6px;transition:color .2s,background .2s}
+.archive-toggle:hover{background:rgba(29,176,117,.12);color:var(--text)}
+.archive-toggle.active{background:var(--accent);color:#ffffff;border-color:var(--accent)}
 
 .bottom-bar{position:fixed;bottom:0;left:0;right:0;padding:12px 16px 28px;z-index:600;background:linear-gradient(to top,rgba(255,255,255,1) 60%,rgba(255,255,255,0))}
 
-.btn-log{display:block;width:100%;max-width:480px;margin:0 auto;padding:17px;background:var(--warn);color:#fff;border:none;border-radius:var(--r-lg);font-family:system-ui,sans-serif;font-size:16px;font-weight:600;cursor:pointer;transition:background .2s,transform .1s;box-shadow:0 4px 20px rgba(232,85,44,.35)}
-.btn-log:hover{background:#d63d4d}
+.btn-log{display:block;width:100%;max-width:480px;margin:0 auto;padding:17px;background:var(--accent);color:#fff;border:none;border-radius:var(--r-lg);font-family:system-ui,sans-serif;font-size:16px;font-weight:600;cursor:pointer;transition:background .2s,transform .1s;box-shadow:0 4px 18px rgba(29,176,117,.30)}
+.btn-log:hover{background:#17935f}
 .btn-log:active{transform:scale(.98)}
 
 /* ── LOG SCREEN ── */
-#screen-log{background:var(--night)}
+#screen-log,#screen-future,#screen-present{background:var(--night)}
 .log-wrap{max-width:520px;margin:0 auto;padding:40px 24px 80px;display:flex;flex-direction:column;gap:22px}
 .btn-back{display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--text-m);font-size:14px;font-family:system-ui,sans-serif;cursor:pointer;padding:6px 0;transition:color .2s}
 .btn-back:hover{color:var(--text)}
@@ -87,15 +89,15 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
 .resolved-date{font-size:17px;color:var(--accent);font-weight:600}
 .resolved-relative{font-size:13px;color:var(--text-m);margin-top:4px}
 
-.btn-primary{width:100%;padding:16px;background:var(--accent);color:var(--night);border:none;border-radius:var(--r);font-family:system-ui,sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:background .2s,transform .1s,opacity .2s}
-.btn-primary:hover:not(:disabled){background:#6fc8aa}
+.btn-primary{width:100%;padding:16px;background:var(--accent);color:#ffffff;border:none;border-radius:var(--r);font-family:system-ui,sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:background .2s,transform .1s,opacity .2s}
+.btn-primary:hover:not(:disabled){background:#17935f}
 .btn-primary:active:not(:disabled){transform:scale(.98)}
 .btn-primary:disabled{opacity:.4;cursor:not-allowed}
 
 /* ── Map toggle (top-right of main screen) ── */
 .map-toggle{
   position:absolute;top:16px;right:16px;z-index:500;
-  display:flex;background:rgba(34,37,44,.85);
+  display:flex;background:rgba(255,255,255,.78);
   backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
   border:1px solid var(--border);border-radius:100px;padding:3px;
   font-family:system-ui,sans-serif;
@@ -106,24 +108,37 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
   font-family:system-ui,sans-serif;font-size:12px;
   transition:background .2s,color .2s;
 }
-.map-toggle button.active{background:var(--accent);color:var(--night);font-weight:600}
+.map-toggle button.active{background:var(--accent);color:#ffffff;font-weight:600}
 
-/* ── Settings button (bottom-left of main screen) ── */
+/* ── Settings button (top-left of main screen) ── */
 .settings-btn{
   position:absolute;left:16px;top:16px;z-index:500;
   width:36px;height:36px;border-radius:50%;
-  background:rgba(34,37,44,.85);
+  background:rgba(255,255,255,.78);
   backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
   border:1px solid var(--border);
   color:var(--text-m);cursor:pointer;
   display:flex;align-items:center;justify-content:center;
   transition:color .2s,background .2s;
 }
-.settings-btn:hover{background:rgba(95,184,154,.2);color:var(--text)}
+.settings-btn:hover{background:rgba(29,176,117,.12);color:var(--text)}
 
-/* ── Modal (consent + info) ── */
+/* ── List button (top-left, next to settings) ── */
+.list-btn{
+  position:absolute;left:62px;top:16px;z-index:500;
+  width:36px;height:36px;border-radius:50%;
+  background:rgba(255,255,255,.78);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--border);
+  color:var(--text-m);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:color .2s,background .2s;
+}
+.list-btn:hover{background:rgba(29,176,117,.12);color:var(--text)}
+
+/* ── Modal (consent + info + reflect + view + list) ── */
 .modal-backdrop{
-  position:fixed;inset:0;background:rgba(24,26,31,.85);
+  position:fixed;inset:0;background:rgba(0,0,0,.35);
   backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
   z-index:1000;display:none;align-items:center;justify-content:center;padding:20px;
 }
@@ -178,9 +193,9 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
   border-radius:var(--r);color:var(--text);font-family:system-ui,sans-serif;font-size:15px;
   cursor:pointer;text-align:left;transition:background .2s,border-color .2s,transform .1s;
 }
-.reflect-option:hover{background:#363a44;border-color:rgba(255,255,255,.2)}
+.reflect-option:hover{background:var(--night-3);border-color:rgba(0,0,0,.18)}
 .reflect-option:active{transform:scale(.98)}
-.reflect-option.selected{background:#363a44;border-color:var(--text-m)}
+.reflect-option.selected{background:var(--night-3);border-color:var(--accent)}
 .reflect-swatch{
   width:22px;height:22px;border-radius:50%;flex-shrink:0;
   box-shadow:0 0 0 1px rgba(255,255,255,.15) inset;
@@ -269,6 +284,82 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
   font-style:italic;
 }
 
+/* ── List modal ── */
+.modal-list{max-width:560px}
+.list-sections{display:flex;flex-direction:column;gap:22px}
+.list-section-title{
+  font-family:system-ui,sans-serif;font-size:11px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.9px;color:var(--text-f);
+  margin-bottom:10px;
+}
+.list-section-empty{
+  font-family:system-ui,sans-serif;font-size:13px;color:var(--text-f);
+  font-style:italic;padding:8px 0;
+}
+.list-items{display:flex;flex-direction:column;gap:10px}
+.list-item{
+  display:flex;align-items:flex-start;gap:14px;
+  padding:14px 16px;background:var(--night-2);
+  border:1px solid var(--border);border-radius:var(--r);
+  cursor:pointer;transition:background .2s,border-color .2s;
+  text-align:left;
+}
+.list-item:hover{background:var(--night-3);border-color:rgba(0,0,0,.18)}
+.list-item-mark{
+  width:32px;height:32px;border-radius:50%;flex-shrink:0;margin-top:2px;
+  box-shadow:0 0 0 1px rgba(0,0,0,.08) inset;
+}
+.list-item-body{flex:1;min-width:0}
+.list-item-title{
+  font-family:Georgia,serif;font-size:15px;color:var(--text);
+  margin-bottom:2px;overflow-wrap:break-word;
+}
+.list-item-meta{
+  font-family:system-ui,sans-serif;font-size:12px;color:var(--text-m);
+  margin-bottom:6px;
+}
+.list-item-chevron{
+  width:16px;height:16px;flex-shrink:0;margin-top:6px;color:var(--text-f);
+  transition:transform .2s;
+}
+.list-item.expanded .list-item-chevron{transform:rotate(90deg)}
+.list-item-detail{
+  margin-top:10px;padding-top:10px;border-top:1px solid var(--border);
+  display:none;flex-direction:column;gap:10px;
+}
+.list-item.expanded .list-item-detail{display:flex}
+.list-detail-block{display:flex;flex-direction:column;gap:4px}
+.list-detail-label{
+  font-family:system-ui,sans-serif;font-size:10px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.8px;color:var(--text-f);
+  display:flex;align-items:center;gap:8px;
+}
+.list-detail-swatch{
+  width:10px;height:10px;border-radius:50%;
+  box-shadow:0 0 0 1px rgba(0,0,0,.08) inset;
+}
+.list-detail-prompt{
+  font-family:system-ui,sans-serif;font-size:12px;font-style:italic;
+  color:var(--text-m);line-height:1.5;
+}
+.list-detail-text{
+  font-family:Georgia,serif;font-size:13.5px;line-height:1.55;
+  color:var(--text);white-space:pre-wrap;
+}
+.list-item-action{
+  margin-top:10px;padding:10px 14px;background:var(--accent);color:#ffffff;
+  border:none;border-radius:var(--r-sm);
+  font-family:system-ui,sans-serif;font-size:13px;font-weight:600;
+  cursor:pointer;transition:background .2s;align-self:flex-start;
+}
+.list-item-action:hover{background:#17935f}
+
+/* Mark thumbnail inside the view modal */
+.view-mark-thumb{
+  width:56px;height:56px;border-radius:50%;margin:6px auto 14px;
+  box-shadow:0 0 0 1px rgba(0,0,0,.08) inset;
+}
+
 /* ── Read-only view of a reflected mark ── */
 .view-reflection{
   display:flex;align-items:center;gap:14px;
@@ -301,7 +392,7 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
   border-radius:var(--r);color:var(--text);font-family:system-ui,sans-serif;font-size:15px;
   cursor:pointer;text-align:left;transition:background .2s,border-color .2s;
 }
-.extend-option:hover{background:#363a44;border-color:rgba(255,255,255,.2)}
+.extend-option:hover{background:var(--night-3);border-color:rgba(0,0,0,.18)}
 
 /* "This isn't over yet" — a quieter link-style button inside the reflect modal */
 .btn-quiet{
@@ -325,12 +416,15 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
   <button class="settings-btn" id="settings-btn" title="Settings">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
   </button>
+  <button class="list-btn" id="list-btn" title="View all entries">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+  </button>
   <div class="map-toggle">
     <button id="map-mine" class="active">My map</button>
     <button id="map-shared">Shared map</button>
   </div>
   <div class="bottom-bar">
-    <button class="btn-log" id="btn-log">I'm feeling anxious — log this</button>
+    <button class="btn-log" id="btn-log">Log an expectation</button>
   </div>
 </div>
 
@@ -422,29 +516,42 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
     <h1>You're on the other side of it now.</h1>
     <p class="intro">Step into your future self. The thing you logged a moment ago has come and gone. Speak as if it already happened — this is your time capsule, sent backward.</p>
 
+    <div class="section" id="prior-prompt-section">
+      <span class="section-label" id="prior-prompt-label">Future self, looking back</span>
+      <p class="section-help" id="prior-prompt-text">—</p>
+      <textarea id="prior-text" rows="5" placeholder="Write as if it has already happened…"></textarea>
+    </div>
+
+    <button class="btn-primary" id="btn-to-present" disabled>Continue</button>
+  </div>
+</div>
+
+<!-- ── SCREEN: BACK IN THE PRESENT (colour pick) ── -->
+<div id="screen-present" class="screen">
+  <div class="log-wrap">
+    <button class="btn-back" id="btn-back-present">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+      Back
+    </button>
+    <h1>Back in the present.</h1>
+    <p class="intro">Now, with the future-self in mind — what's your honest expectation, here and now?</p>
+
     <div class="section">
-      <span class="section-label">Looking back, how did it go?</span>
-      <p class="section-help">Pick the version of your future self that feels possible right now.</p>
-      <div class="reflect-options" id="prior-options">
+      <span class="section-label">How do you feel about the time ahead?</span>
+      <div class="reflect-options" id="present-options">
         <button class="reflect-option" data-value="better">
           <span class="reflect-swatch" style="background:#1db075"></span>
-          <span>Better than I'd hoped</span>
+          <span>I'm hopeful — I think this will go well</span>
         </button>
         <button class="reflect-option" data-value="same">
           <span class="reflect-swatch" style="background:#e6d944"></span>
-          <span>About what I'd imagined</span>
+          <span>I'm unsure — it could go either way</span>
         </button>
         <button class="reflect-option" data-value="worse">
           <span class="reflect-swatch" style="background:#6854da"></span>
-          <span>Harder than I'd anticipated</span>
+          <span>I'm worried — I think this will be hard</span>
         </button>
       </div>
-    </div>
-
-    <div class="section" id="prior-prompt-section" style="display:none">
-      <span class="section-label" id="prior-prompt-label">Take a moment</span>
-      <p class="section-help" id="prior-prompt-text">—</p>
-      <textarea id="prior-text" rows="5" placeholder="Write as if it has already happened…"></textarea>
     </div>
 
     <button class="btn-primary" id="btn-save" disabled>Leave this here</button>
@@ -536,6 +643,7 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
 <div class="modal-backdrop" id="view-backdrop">
   <div class="modal">
     <h2>A moment you left here</h2>
+    <div id="view-mark-thumb" class="view-mark-thumb"></div>
     <div class="modal-label" id="view-anxiety-label" style="display:none"></div>
     <p style="font-size:13px;color:var(--text-m);line-height:1.6;margin-bottom:6px">Here's the time capsule you sent forward, and the one you opened on the other side.</p>
 
@@ -589,6 +697,20 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
     </div>
     <div class="modal-actions" style="margin-top:14px">
       <button class="btn-secondary" id="extend-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── List modal: overview of every logged anxiety ── -->
+<div class="modal-backdrop" id="list-backdrop">
+  <div class="modal modal-list">
+    <h2>Everything you've logged</h2>
+    <p style="font-size:13px;color:var(--text-m);line-height:1.6;margin-bottom:18px">Your time capsules — those still ahead, those waiting for reflection, and those you've looked back on.</p>
+    <div class="list-sections" id="list-sections">
+      <!-- populated dynamically -->
+    </div>
+    <div class="modal-actions" style="margin-top:18px">
+      <button class="btn-secondary" id="list-close">Close</button>
     </div>
   </div>
 </div>
@@ -1226,34 +1348,22 @@ function reflectColor(reflection) {
   return new THREE.Color(REFLECT_COLORS[reflection || null] || REFLECT_COLORS.null);
 }
 
-// Future-self prompt pools. The user picks one of three colour-categories on
-// screen-future, and we draw a prompt at random from the matching pool.
-// All prompts are written in past tense / future-self voice — the user is
-// imagining themselves on the other side of the event, sending a time capsule
-// backward.
-const PRIOR_PROMPTS = {
-  better: [
-    "Looking back, what made this worth the anticipation?",
-    "What surprised you about how good it felt?",
-    "What part do you most want to remember?",
-    "Who or what did you want to thank afterward?",
-  ],
-  same: [
-    "What did you learn about yourself that you didn't expect?",
-    "What did you carry with you through the middle of it?",
-    "What was different from what you'd imagined, even though the feeling was familiar?",
-    "What would you tell your past self, the one who just sent this capsule?",
-  ],
-  worse: [
-    "What got you through this, even when it was harder than you'd feared?",
-    "What did you care about that kept you going?",
-    "What do you wish you'd remembered when you were dreading it?",
-    "Who or what helped, even a little — and might you reach for again next time?",
-  ],
-};
-function drawPrompt(colour) {
-  const pool = PRIOR_PROMPTS[colour] || PRIOR_PROMPTS.same;
-  return pool[Math.floor(Math.random() * pool.length)];
+// Future-self prompt pool. Drawn from when the user reaches screen-future
+// (which now happens before any colour pick). Prompts are written in
+// past tense / future-self voice — the user is imagining themselves on
+// the other side of the event, sending a time capsule backward. All
+// prompts work for both hoped-for and feared events, anchored on care.
+const PRIOR_PROMPTS = [
+  "Looking back, what did you most want to remember about this?",
+  "What did you care about that carried you through?",
+  "What surprised you about how you actually felt afterward?",
+  "What would you tell your past self — the one who just sent this capsule?",
+  "What did you almost not notice that turned out to matter?",
+  "What do you wish you'd held onto more closely while it was happening?",
+  "Who or what helped, even a little?",
+];
+function drawPrompt() {
+  return PRIOR_PROMPTS[Math.floor(Math.random() * PRIOR_PROMPTS.length)];
 }
 
 // Render a radial-gradient mark texture: a small canvas with inner = prior colour,
@@ -1293,9 +1403,8 @@ function makeMark(anxiety) {
   texture.magFilter = THREE.LinearFilter;
   const mat = new THREE.MeshStandardMaterial({
     map: texture,
-    emissiveMap: texture,
-    emissive: 0xffffff,         // multiplied by emissiveMap, so emission = texture colour
-    emissiveIntensity: 0.3,     // matches the column self-glow recipe
+    emissive: 0x000000,
+    emissiveIntensity: 0.0,
     roughness: 1.0,
     metalness: 0,
     side: THREE.FrontSide,
@@ -1518,6 +1627,7 @@ function resetLogState() {
   S.selectedUnit = null;
   S.selectedResolvedAt = null;
   S.selectedLabel = null;
+  S.selectedPriorAnswer = null;
   S.selectedPriorExpectation = null;
   document.querySelectorAll('.quick-pick').forEach(b => b.classList.remove('active'));
   document.getElementById('duration-amount').value = '';
@@ -1526,10 +1636,11 @@ function resetLogState() {
   document.getElementById('label-input').value = '';
   document.getElementById('resolved-preview').style.display = 'none';
   document.getElementById('btn-continue').disabled = true;
-  // Reset screen-future too
-  document.querySelectorAll('#prior-options .reflect-option').forEach(b => b.classList.remove('selected'));
+  // Reset screen-future
   document.getElementById('prior-text').value = '';
-  document.getElementById('prior-prompt-section').style.display = 'none';
+  document.getElementById('btn-to-present').disabled = true;
+  // Reset screen-present
+  document.querySelectorAll('#present-options .reflect-option').forEach(b => b.classList.remove('selected'));
   document.getElementById('btn-save').disabled = true;
 }
 
@@ -1645,8 +1756,8 @@ document.getElementById('exact-datetime').addEventListener('input', e => {
   updateResolvedPreview();
 });
 
-// Continue: capture the values from screen-log into S, then advance to screen-future
-// (the time-capsule step). Final save happens from btn-save on the next screen.
+// Continue from screen-log → screen-future (the time-capsule step).
+// Captures place + label + time, draws a fresh prompt, shows the textarea.
 document.getElementById('btn-continue').addEventListener('click', () => {
   if (!S.pendingPos) return;
   const resolvedAt = currentResolvedAt();
@@ -1657,12 +1768,12 @@ document.getElementById('btn-continue').addEventListener('click', () => {
   S.selectedLabel = label;
   // Populate the future banner with the chosen date
   document.getElementById('future-banner-date').textContent = fmtDate(resolvedAt);
-  // Reset screen-future state in case the user came back
-  document.querySelectorAll('#prior-options .reflect-option').forEach(b => b.classList.remove('selected'));
-  document.getElementById('prior-text').value = '';
-  document.getElementById('prior-prompt-section').style.display = 'none';
-  document.getElementById('btn-save').disabled = true;
-  S.selectedPriorExpectation = null;
+  // Always draw a fresh prompt when entering the screen (re-randomises if user
+  // goes back and comes forward again — sometimes a different question lands
+  // differently). If the user has typed something we don't clear it; only
+  // an empty textarea will see the new prompt as the trigger.
+  document.getElementById('prior-prompt-text').textContent = drawPrompt();
+  updateFutureContinueState();
   show('screen-future');
 });
 
@@ -1671,40 +1782,52 @@ document.getElementById('btn-back-future').addEventListener('click', () => {
   show('screen-log');
 });
 
-// Prior-expectation buttons: pick a colour, then draw a prompt for that colour
-document.querySelectorAll('#prior-options .reflect-option').forEach(btn => {
+// Continue from screen-future → screen-present (the colour-pick step).
+// Captures the future-self answer.
+document.getElementById('btn-to-present').addEventListener('click', () => {
+  const text = document.getElementById('prior-text').value.trim();
+  if (!text) return;
+  S.selectedPriorAnswer = text;
+  // Reset present-screen state (in case user came back)
+  document.querySelectorAll('#present-options .reflect-option').forEach(b => b.classList.remove('selected'));
+  S.selectedPriorExpectation = null;
+  document.getElementById('btn-save').disabled = true;
+  show('screen-present');
+});
+
+// Back from screen-present → screen-future
+document.getElementById('btn-back-present').addEventListener('click', () => {
+  show('screen-future');
+});
+
+// Live-update Continue button on screen-future (text required)
+document.getElementById('prior-text').addEventListener('input', updateFutureContinueState);
+function updateFutureContinueState() {
+  const text = document.getElementById('prior-text').value.trim();
+  document.getElementById('btn-to-present').disabled = text.length === 0;
+}
+
+// Present-screen colour picker: each click sets the expectation and enables save
+document.querySelectorAll('#present-options .reflect-option').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('#prior-options .reflect-option').forEach(b => b.classList.remove('selected'));
+    document.querySelectorAll('#present-options .reflect-option').forEach(b => b.classList.remove('selected'));
     btn.classList.add('selected');
     S.selectedPriorExpectation = btn.dataset.value;
-    // Draw a colour-matched prompt; only re-draw if this is a fresh pick
-    // (so if the user wavers between colours, the prompt swaps with each pick).
-    document.getElementById('prior-prompt-text').textContent = drawPrompt(btn.dataset.value);
-    document.getElementById('prior-prompt-section').style.display = 'block';
-    // Whether save is enabled also depends on the text field
-    updatePriorSaveState();
+    document.getElementById('btn-save').disabled = false;
   });
 });
 
-// Prior-text input: live-update btn-save state
-document.getElementById('prior-text').addEventListener('input', updatePriorSaveState);
-
-function updatePriorSaveState() {
-  const colour = S.selectedPriorExpectation;
-  const text = document.getElementById('prior-text').value.trim();
-  document.getElementById('btn-save').disabled = !(colour && text.length > 0);
-}
-
-// Save: build anxiety with all the captured fields and persist.
+// Save: build anxiety with everything captured and persist.
 document.getElementById('btn-save').addEventListener('click', async () => {
   if (!S.pendingPos) return;
   const resolvedAt = S.selectedResolvedAt;
   if (!resolvedAt || resolvedAt <= nowMs()) return;
   const label = (S.selectedLabel || '').trim();
   if (!label) return;
+  const priorAnswer = (S.selectedPriorAnswer || '').trim();
+  if (!priorAnswer) return;
   const priorExpectation = S.selectedPriorExpectation;
-  const priorAnswer = document.getElementById('prior-text').value.trim();
-  if (!priorExpectation || !priorAnswer) return;
+  if (!priorExpectation) return;
   const createdAt = nowMs();
   const anxiety = {
     id: 'a_' + createdAt + '_' + Math.random().toString(36).slice(2,7),
@@ -1713,10 +1836,10 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     createdAt,
     resolvedAt,
     label,                       // required
-    priorExpectation,            // 'better' | 'same' | 'worse'
-    priorAnswer,                 // required text from the future-self prompt
-    reflection: null,            // 'better' | 'same' | 'worse' | null (unreflected)
-    reflectionText: null,        // set when the user reflects after resolution
+    priorExpectation,            // 'better' | 'same' | 'worse'  (picked AFTER the time-capsule)
+    priorAnswer,                 // the future-self answer
+    reflection: null,            // 'better' | 'same' | 'worse' | null
+    reflectionText: null,        // set later, when the user reflects after resolution
   };
   S.anxieties.push(anxiety);
   persist();
@@ -2007,6 +2130,14 @@ function openViewModal(anxietyId) {
   const anxiety = S.anxieties.find(a => a.id === anxietyId);
   if (!anxiety) return;
   viewCurrent = anxietyId;
+  // Render the mark thumbnail at the top — the same visual signature as on the map.
+  const priorHexForThumb = REFLECT_COLORS[anxiety.priorExpectation] || REFLECT_COLORS.null;
+  const reflHexForThumb = REFLECT_COLORS[anxiety.reflection] || REFLECT_COLORS.null;
+  const thumbCanvas = makeMarkCanvas(priorHexForThumb, reflHexForThumb);
+  const thumbEl = document.getElementById('view-mark-thumb');
+  thumbEl.style.backgroundImage = `url(${thumbCanvas.toDataURL()})`;
+  thumbEl.style.backgroundSize = 'cover';
+  thumbEl.style.backgroundPosition = 'center';
   // Label pill
   const labelEl = document.getElementById('view-anxiety-label');
   if (anxiety.label) {
@@ -2072,6 +2203,198 @@ document.getElementById('view-edit').addEventListener('click', () => {
   closeViewModal();
   if (id) setTimeout(() => openReflectModal(id), 180);
 });
+
+// ── List modal: overview of every logged anxiety ──
+// Sectioned into "still ahead" (active, unresolved), "waiting for reflection"
+// (resolved but no reflection yet), and "looked back on" (resolved and
+// reflected). Tapping a row opens an inline detail panel. The reflect-button
+// from the list lets the user reflect on a resolved anxiety even when not
+// near its location.
+
+function openListModal() {
+  renderListModal();
+  document.getElementById('list-backdrop').classList.add('active');
+}
+function closeListModal() {
+  document.getElementById('list-backdrop').classList.remove('active');
+}
+
+function fmtDuration(start, end) {
+  const startTxt = fmtDate(start);
+  const endTxt = fmtDate(end);
+  return `${startTxt} → ${endTxt}`;
+}
+
+// Render the full list view from S.anxieties. Called whenever the modal opens
+// (after any change to data, e.g. reflections from inside this view).
+function renderListModal() {
+  const now = nowMs();
+  const all = S.anxieties.slice();
+  // Sort each section by relevant criteria — newest first within sections.
+  const stillAhead   = all.filter(a => a.resolvedAt > now)
+                          .sort((a, b) => a.resolvedAt - b.resolvedAt);
+  const waitingRefl  = all.filter(a => a.resolvedAt <= now && !a.reflection)
+                          .sort((a, b) => b.resolvedAt - a.resolvedAt);
+  const lookedBack   = all.filter(a => a.resolvedAt <= now && a.reflection)
+                          .sort((a, b) => b.resolvedAt - a.resolvedAt);
+
+  const container = document.getElementById('list-sections');
+  container.innerHTML = '';
+  container.appendChild(renderListSection('Still ahead',         stillAhead,  'ahead'));
+  container.appendChild(renderListSection('Waiting for reflection', waitingRefl, 'wait'));
+  container.appendChild(renderListSection('Looked back on',      lookedBack,  'done'));
+}
+
+function renderListSection(title, anxieties, kind) {
+  const wrap = document.createElement('div');
+  const head = document.createElement('div');
+  head.className = 'list-section-title';
+  head.textContent = `${title} (${anxieties.length})`;
+  wrap.appendChild(head);
+
+  if (anxieties.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'list-section-empty';
+    empty.textContent = kind === 'ahead' ? 'Nothing on the horizon right now.'
+                       : kind === 'wait' ? 'No moments waiting on your reflection.'
+                                         : 'You haven\'t reflected on anything yet.';
+    wrap.appendChild(empty);
+    return wrap;
+  }
+
+  const items = document.createElement('div');
+  items.className = 'list-items';
+  for (const a of anxieties) {
+    items.appendChild(renderListItem(a, kind));
+  }
+  wrap.appendChild(items);
+  return wrap;
+}
+
+function renderListItem(anxiety, kind) {
+  const row = document.createElement('button');
+  row.className = 'list-item';
+  row.type = 'button';
+
+  // Mark thumbnail. For active columns (still ahead), use prior colour as
+  // inner and white as outer — matching the "logged but unreflected" look.
+  // For waiting + done items, use the mark gradient with whatever state exists.
+  const priorHex = REFLECT_COLORS[anxiety.priorExpectation] || REFLECT_COLORS.null;
+  const reflHex  = REFLECT_COLORS[anxiety.reflection] || REFLECT_COLORS.null;
+  const canvas = makeMarkCanvas(priorHex, reflHex);
+  const thumb = document.createElement('div');
+  thumb.className = 'list-item-mark';
+  thumb.style.backgroundImage = `url(${canvas.toDataURL()})`;
+  thumb.style.backgroundSize = 'cover';
+  thumb.style.backgroundPosition = 'center';
+  row.appendChild(thumb);
+
+  // Body: title (label) + meta (duration) + detail panel
+  const body = document.createElement('div');
+  body.className = 'list-item-body';
+
+  const title = document.createElement('div');
+  title.className = 'list-item-title';
+  title.textContent = anxiety.label || '(no label)';
+  body.appendChild(title);
+
+  const meta = document.createElement('div');
+  meta.className = 'list-item-meta';
+  meta.textContent = fmtDuration(anxiety.createdAt, anxiety.resolvedAt);
+  body.appendChild(meta);
+
+  // Detail panel (initially hidden via CSS)
+  const detail = document.createElement('div');
+  detail.className = 'list-item-detail';
+
+  // Prior section
+  if (anxiety.priorAnswer || anxiety.priorExpectation) {
+    const block = document.createElement('div');
+    block.className = 'list-detail-block';
+    const label = document.createElement('div');
+    label.className = 'list-detail-label';
+    label.innerHTML =
+      `<span class="list-detail-swatch" style="background:${priorHex}"></span>` +
+      `<span>What I imagined</span>`;
+    block.appendChild(label);
+    if (anxiety.priorAnswer) {
+      const text = document.createElement('div');
+      text.className = 'list-detail-text';
+      text.textContent = anxiety.priorAnswer;
+      block.appendChild(text);
+    }
+    detail.appendChild(block);
+  }
+
+  // Reflection section (only if reflected)
+  if (anxiety.reflection) {
+    const block = document.createElement('div');
+    block.className = 'list-detail-block';
+    const label = document.createElement('div');
+    label.className = 'list-detail-label';
+    label.innerHTML =
+      `<span class="list-detail-swatch" style="background:${reflHex}"></span>` +
+      `<span>What I found</span>`;
+    block.appendChild(label);
+    if (anxiety.reflectionText) {
+      const text = document.createElement('div');
+      text.className = 'list-detail-text';
+      text.textContent = anxiety.reflectionText;
+      block.appendChild(text);
+    }
+    detail.appendChild(block);
+  }
+
+  // Action button: only for items waiting for reflection — opens the
+  // reflect modal directly from the list (so the user doesn't need to be
+  // physically near the spot to reflect).
+  if (kind === 'wait') {
+    const act = document.createElement('button');
+    act.className = 'list-item-action';
+    act.type = 'button';
+    act.textContent = 'Reflect now';
+    act.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Allow re-prompting later if user closes without finishing
+      reflectSeenThisSession.delete(anxiety.id);
+      closeListModal();
+      setTimeout(() => openReflectModal(anxiety.id), 180);
+    });
+    detail.appendChild(act);
+  } else if (kind === 'done') {
+    // Allow editing existing reflections from here too
+    const act = document.createElement('button');
+    act.className = 'list-item-action';
+    act.type = 'button';
+    act.textContent = 'Edit reflection';
+    act.addEventListener('click', (e) => {
+      e.stopPropagation();
+      reflectSeenThisSession.delete(anxiety.id);
+      closeListModal();
+      setTimeout(() => openReflectModal(anxiety.id), 180);
+    });
+    detail.appendChild(act);
+  }
+
+  body.appendChild(detail);
+  row.appendChild(body);
+
+  // Chevron
+  const chev = document.createElement('div');
+  chev.className = 'list-item-chevron';
+  chev.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>';
+  row.appendChild(chev);
+
+  // Toggle the detail panel on row click
+  row.addEventListener('click', () => {
+    row.classList.toggle('expanded');
+  });
+
+  return row;
+}
+
+document.getElementById('list-btn').addEventListener('click', openListModal);
+document.getElementById('list-close').addEventListener('click', closeListModal);
 
 // ── Early-resolve flow ──
 // Tapping an active column opens this small modal. Confirming sets
