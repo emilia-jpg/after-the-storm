@@ -1579,9 +1579,11 @@ function refreshCompassLines() {
     const RIBBON_WIDTH = 0.7;   // ~0.4m wide
     const SEGMENTS = 24;
     // Build a custom geometry with two strips of vertices so we can per-vertex
-    // colour them — gives a brighter-near-cluster fade along the length.
+    // colour them. Uses 4-component vertex colours (RGBA) so we can also
+    // fade the alpha — that gives a clean dissolve-from-nothing at the
+    // user-end of the ribbon rather than a hard start.
     const positions = new Float32Array((SEGMENTS + 1) * 2 * 3);
-    const colors    = new Float32Array((SEGMENTS + 1) * 2 * 3);
+    const colors    = new Float32Array((SEGMENTS + 1) * 2 * 4);
     const indices   = [];
     // Perpendicular vector (in XZ plane) to offset the strip's two sides
     const px = -dirZ * (RIBBON_WIDTH / 2);
@@ -1590,25 +1592,28 @@ function refreshCompassLines() {
       const t = i / SEGMENTS;
       const cx = sx + (ex - sx) * t;
       const cz = sz + (ez - sz) * t;
-      // Two vertices per segment — one on each side of the centre line
       positions[(i*2)*3]     = cx + px;
       positions[(i*2)*3 + 1] = 0.35;
       positions[(i*2)*3 + 2] = cz + pz;
       positions[(i*2+1)*3]     = cx - px;
       positions[(i*2+1)*3 + 1] = 0.35;
       positions[(i*2+1)*3 + 2] = cz - pz;
-      // Colour fade: dim at user-end, bright at cluster-end. Accent-green tone.
-      const fade = 0.25 + t * 0.55;
-      const r = 0.11 * fade + 0.10;
-      const g = 0.69 * fade + 0.30;
-      const b = 0.46 * fade + 0.20;
-      colors[(i*2)*3]     = r;
-      colors[(i*2)*3 + 1] = g;
-      colors[(i*2)*3 + 2] = b;
-      colors[(i*2+1)*3]     = r;
-      colors[(i*2+1)*3 + 1] = g;
-      colors[(i*2+1)*3 + 2] = b;
-      // Two triangles per segment (except the last vertex column)
+      // RGB: same accent-green tone as before
+      const colourFade = 0.25 + t * 0.55;
+      const r = 0.11 * colourFade + 0.10;
+      const g = 0.69 * colourFade + 0.30;
+      const b = 0.46 * colourFade + 0.20;
+      // Alpha: ramp from 0 at the user end up to full near the cluster.
+      // Using a smooth curve (smoothstep) makes the start dissolve in
+      // softly. Peaks at 0.85 to keep the overall opacity comfortable.
+      const aRaw = t * t * (3.0 - 2.0 * t);   // smoothstep
+      const a = aRaw * 0.85;
+      for (const idx of [i*2, i*2+1]) {
+        colors[idx*4]     = r;
+        colors[idx*4 + 1] = g;
+        colors[idx*4 + 2] = b;
+        colors[idx*4 + 3] = a;
+      }
       if (i < SEGMENTS) {
         const a0 = i*2, a1 = i*2+1, b0 = (i+1)*2, b1 = (i+1)*2+1;
         indices.push(a0, b0, a1, a1, b0, b1);
@@ -1616,12 +1621,14 @@ function refreshCompassLines() {
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geo.setAttribute('color',    new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute('color',    new THREE.BufferAttribute(colors, 4));   // RGBA
     geo.setIndex(indices);
     const mat = new THREE.MeshBasicMaterial({
       vertexColors: true,
       transparent: true,
-      opacity: 0.85,
+      // No global opacity multiplier — alpha now comes from the vertex
+      // attribute itself, which is what gives the fade-from-nothing.
+      opacity: 1.0,
       depthWrite: false,
       toneMapped: false,
       side: THREE.DoubleSide,
