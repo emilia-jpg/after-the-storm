@@ -573,13 +573,13 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
 
     <div class="modal-section">
       <h3>Sharing</h3>
-      <p style="margin-bottom:12px">Your anxieties are saved on your device by default. If you choose to share,
+      <p style="margin-bottom:12px">Your entries are saved on your device by default. If you choose to share,
         they're added to a collective map where everyone can see them. No names, no exact
         locations, no times — just rough places and durations.</p>
       <div class="consent-row" id="consent-row">
         <input type="checkbox" id="consent-checkbox"/>
         <label for="consent-checkbox">
-          Share my anxieties anonymously
+          Share my entries anonymously
           <span class="small">Coordinates rounded to ~100m, time truncated to the hour, no identifier stored.</span>
         </label>
       </div>
@@ -674,12 +674,19 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
      If yes, set resolvedAt = now and open the reflection modal. -->
 <div class="modal-backdrop" id="early-backdrop">
   <div class="modal">
-    <h2>Has this passed already?</h2>
+    <h2>What about this entry?</h2>
     <div class="modal-label" id="early-label" style="display:none"></div>
-    <p style="font-size:14px;color:var(--text-m);line-height:1.6;margin-bottom:20px">If you're past the moment you were anticipating — even sooner than you'd expected — you can mark it as resolved now.</p>
-    <div class="modal-actions">
-      <button class="btn-secondary" id="early-cancel">Not yet</button>
-      <button class="btn-primary" id="early-confirm">Yes, I'm past it</button>
+    <p style="font-size:14px;color:var(--text-m);line-height:1.6;margin-bottom:18px">You can pick this up in a few different ways:</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="reflect-option" id="early-reconsider" style="width:100%">
+        <span>Reconsider — I want to do the time-capsule again</span>
+      </button>
+      <button class="reflect-option" id="early-confirm" style="width:100%">
+        <span>I'm already past it — let me reflect</span>
+      </button>
+    </div>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn-secondary" id="early-cancel">Cancel</button>
     </div>
   </div>
 </div>
@@ -835,6 +842,9 @@ const S = {
   selectedUnit: null,
   selectedResolvedAt: null,
   currentMode: 'quick',
+  // When non-null, the log-flow's save handler appends a new prior to this
+  // existing anxiety instead of creating a new one.
+  reconsiderAnxietyId: null,
 };
 
 // ── Settings persistence (consent + onboarding flag) ───────────
@@ -860,6 +870,22 @@ function hydrate() {
   try {
     const d = JSON.parse(localStorage.getItem('anchor-v2')||'{}');
     S.anxieties = d.anxieties || [];
+    // Migration: ensure each entry has priorExpectations[] and priorAnswers[]
+    // arrays. Older entries had only the singular priorExpectation/priorAnswer.
+    // We keep both: the array is the source of truth (used for multi-ring
+    // marks and history), and the singular field shadows the most-recent
+    // entry of the array (so existing read-paths keep working without changes).
+    for (const a of S.anxieties) {
+      if (!Array.isArray(a.priorExpectations)) {
+        a.priorExpectations = a.priorExpectation ? [a.priorExpectation] : [];
+      }
+      if (!Array.isArray(a.priorAnswers)) {
+        a.priorAnswers = a.priorAnswer ? [a.priorAnswer] : [];
+      }
+      // Sync the singular accessor to the latest entry
+      a.priorExpectation = a.priorExpectations[a.priorExpectations.length - 1] || null;
+      a.priorAnswer = a.priorAnswers[a.priorAnswers.length - 1] || null;
+    }
   } catch {}
 }
 
@@ -1315,6 +1341,9 @@ function makeColumn(anxiety) {
 // State for active column meshes + their "marks" left behind after resolution
 const columnMeshes = new Map();   // anxiety.id → cylinder mesh
 const markMeshes = new Map();     // anxiety.id → flat disc mesh
+// Compass lines: thin glowing lines on the plane pointing from the user
+// toward nearby clusters of entries (so you can find your way to them).
+const compassLines = [];
 
 // Create a small flat disc to mark the spot where a column once stood.
 // Uses the column's near-present (warm amber) colour so it reads as a
@@ -1366,26 +1395,47 @@ function drawPrompt() {
   return PRIOR_PROMPTS[Math.floor(Math.random() * PRIOR_PROMPTS.length)];
 }
 
-// Render a radial-gradient mark texture: a small canvas with inner = prior colour,
-// outer = reflection colour. Used as a Three.js CanvasTexture on the mark mesh.
-function makeMarkCanvas(priorColor, reflectionColor) {
+// Render a radial-gradient mark texture from an array of colour stops
+// (inner → outer). With 2 stops it's the original prior+reflection look;
+// with more stops, each re-do of the expectation adds another ring between
+// the original inner and the outer.
+function makeMarkCanvas(colorStops) {
   const size = 256;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d');
-  // Radial gradient: inner solid prior colour, fading to outer reflection colour.
-  const inner = priorColor || '#ffffff';
-  const outer = reflectionColor || '#ffffff';
+  const stops = (colorStops && colorStops.length > 0) ? colorStops : ['#ffffff'];
   const g = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
-  g.addColorStop(0, inner);
-  g.addColorStop(1, outer);
+  if (stops.length === 1) {
+    g.addColorStop(0, stops[0]);
+    g.addColorStop(1, stops[0]);
+  } else {
+    for (let i = 0; i < stops.length; i++) {
+      g.addColorStop(i / (stops.length - 1), stops[i]);
+    }
+  }
   ctx.fillStyle = g;
-  // Clip to a circle so the mark is round, not square
   ctx.beginPath();
   ctx.arc(size/2, size/2, size/2, 0, Math.PI * 2);
   ctx.fill();
   return canvas;
+}
+
+// Build the colour-stop array for an anxiety. The inner stops are the prior
+// expectations in chronological order (original first, then each re-do),
+// and the outermost stop is the reflection colour. White is used as
+// outermost if not yet reflected, and as the only stop if there's no prior.
+function markStopsForAnxiety(anxiety) {
+  const priors = (anxiety.priorExpectations && anxiety.priorExpectations.length > 0)
+    ? anxiety.priorExpectations
+    : (anxiety.priorExpectation ? [anxiety.priorExpectation] : []);
+  const stops = priors.map(p => REFLECT_COLORS[p] || REFLECT_COLORS.null);
+  // Append the reflection colour (or white if unreflected)
+  stops.push(REFLECT_COLORS[anxiety.reflection] || REFLECT_COLORS.null);
+  // If there are no priors at all (edge case for very old entries), the
+  // result is just [white] which renders as a white mark.
+  return stops.length > 0 ? stops : ['#ffffff'];
 }
 
 function makeMark(anxiety) {
@@ -1393,11 +1443,9 @@ function makeMark(anxiety) {
   const geo = new THREE.CircleGeometry(markRadius, 48);
   // CircleGeometry lives in XY by default — rotate -PI/2 around X to lay flat
   geo.rotateX(-Math.PI / 2);
-  // Two-tone radial gradient texture: inner = prior expectation colour,
-  // outer = reflection colour. Both default to white (no prior, no reflection).
-  const priorHex = REFLECT_COLORS[anxiety.priorExpectation] || REFLECT_COLORS.null;
-  const reflHex = REFLECT_COLORS[anxiety.reflection] || REFLECT_COLORS.null;
-  const canvas = makeMarkCanvas(priorHex, reflHex);
+  // Multi-stop radial gradient: each prior expectation becomes an inner ring,
+  // outermost stop is the reflection (or white if unreflected).
+  const canvas = makeMarkCanvas(markStopsForAnxiety(anxiety));
   const texture = new THREE.CanvasTexture(canvas);
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
@@ -1416,8 +1464,6 @@ function makeMark(anxiety) {
   mesh.userData = {
     anxietyId: anxiety.id,
     resolvedAt: anxiety.resolvedAt,
-    priorExpectation: anxiety.priorExpectation || null,
-    reflection: anxiety.reflection || null,
     canvas,           // keep a reference so we can re-render the gradient
     texture,
   };
@@ -1425,28 +1471,134 @@ function makeMark(anxiety) {
   return mesh;
 }
 
-// Re-render the mark's radial gradient texture. Used when the user reflects
-// or edits an existing reflection — the inner colour (prior) stays put,
-// the outer colour (reflection) changes.
+// Re-render the mark's radial gradient texture. Used when the user reflects,
+// edits a reflection, or re-does an expectation — we look up the latest
+// anxiety state and rebuild stops from scratch.
 function refreshMarkColors(anxietyId) {
   const mark = markMeshes.get(anxietyId);
   if (!mark) return;
+  const anxiety = S.anxieties.find(a => a.id === anxietyId)
+              || S.sharedAnxieties.find(a => a.id === anxietyId);
+  if (!anxiety) return;
   const ud = mark.userData;
-  const priorHex = REFLECT_COLORS[ud.priorExpectation] || REFLECT_COLORS.null;
-  const reflHex = REFLECT_COLORS[ud.reflection] || REFLECT_COLORS.null;
   const ctx = ud.canvas.getContext('2d');
   ctx.clearRect(0, 0, ud.canvas.width, ud.canvas.height);
-  const newCanvas = makeMarkCanvas(priorHex, reflHex);
+  const newCanvas = makeMarkCanvas(markStopsForAnxiety(anxiety));
   ctx.drawImage(newCanvas, 0, 0);
   ud.texture.needsUpdate = true;
 }
 
 // Update an existing mark's reflection colour without rebuilding the whole scene.
 function setMarkReflection(anxietyId, reflection) {
-  const mark = markMeshes.get(anxietyId);
-  if (!mark) return;
-  mark.userData.reflection = reflection;
+  // The anxiety object in S.anxieties is the source of truth — once it's
+  // updated, refreshMarkColors picks up the new state.
   refreshMarkColors(anxietyId);
+}
+
+// ── Compass lines ──
+// Thin glowing lines on the plane that point from the user's position outward
+// toward nearby clusters of entries. They appear only for clusters that are
+// far enough away that you can't easily see them (>~36m / >60 world units).
+// Cluster threshold: any two entries within ~200m group together.
+const COMPASS_CLUSTER_THRESHOLD = 333;  // ~200m in world units (0.6m/unit)
+const COMPASS_MIN_DISTANCE      = 60;   // ~36m: don't bother for close-by stuff
+const COMPASS_MAX_DISTANCE      = 6500; // ~3.9km: anything further is off-map
+
+function clusterEntries(entries) {
+  // entries: [{ x, z, id }]. Returns: [{ x, z, count }] for each cluster.
+  // Greedy clustering with a fixed radius.
+  const clusters = [];
+  for (const e of entries) {
+    let best = null;
+    let bestD = Infinity;
+    for (const c of clusters) {
+      const dx = e.x - c.x, dz = e.z - c.z;
+      const d = Math.sqrt(dx*dx + dz*dz);
+      if (d < bestD && d < COMPASS_CLUSTER_THRESHOLD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    if (best) {
+      // Incremental centroid update
+      best.x = (best.x * best.count + e.x) / (best.count + 1);
+      best.z = (best.z * best.count + e.z) / (best.count + 1);
+      best.count += 1;
+    } else {
+      clusters.push({ x: e.x, z: e.z, count: 1 });
+    }
+  }
+  return clusters;
+}
+
+function clearCompassLines() {
+  for (const line of compassLines) {
+    if (line.geometry) line.geometry.dispose();
+    if (line.material) line.material.dispose();
+    scene.remove(line);
+  }
+  compassLines.length = 0;
+}
+
+function refreshCompassLines() {
+  clearCompassLines();
+  if (!S.currentPos) return;
+  // User's position in world space is the origin (0, 0, 0) — projectToScene
+  // returns coords relative to S.currentPos.
+  // Gather visible entries (active columns + waiting marks; reflected marks
+  // too — useful for finding where you've been).
+  const entries = [];
+  for (const a of S.anxieties) {
+    if (!a.lat || !a.lng) continue;
+    const { x, z } = projectToScene(a.lat, a.lng);
+    entries.push({ x, z, id: a.id });
+  }
+  if (entries.length === 0) return;
+  const clusters = clusterEntries(entries);
+  for (const c of clusters) {
+    const d = Math.sqrt(c.x * c.x + c.z * c.z);
+    if (d < COMPASS_MIN_DISTANCE) continue;
+    if (d > COMPASS_MAX_DISTANCE) continue;
+    // Line: start ~20 units from user heading toward cluster,
+    // end ~25 units short of cluster centroid.
+    const dirX = c.x / d, dirZ = c.z / d;
+    const startMargin = 20;
+    const endMargin   = 25;
+    const sx = dirX * startMargin, sz = dirZ * startMargin;
+    const ex = c.x - dirX * endMargin, ez = c.z - dirZ * endMargin;
+    if (Math.hypot(ex - sx, ez - sz) < 5) continue;  // too short, skip
+    // Build a multi-segment line so we can do per-vertex colour for the fade.
+    const SEGMENTS = 24;
+    const positions = new Float32Array((SEGMENTS + 1) * 3);
+    const colors = new Float32Array((SEGMENTS + 1) * 3);
+    for (let i = 0; i <= SEGMENTS; i++) {
+      const t = i / SEGMENTS;
+      const px = sx + (ex - sx) * t;
+      const pz = sz + (ez - sz) * t;
+      positions[i*3]   = px;
+      positions[i*3+1] = 0.4;            // just above the plane, below marks (y=0.6)
+      positions[i*3+2] = pz;
+      // Fade: alpha-equivalent via colour intensity. Bright near far end,
+      // dimmer near user. Use accent-green tinted toward white.
+      const fade = 0.25 + t * 0.55;
+      colors[i*3]   = 0.11 * fade + 0.10;
+      colors[i*3+1] = 0.69 * fade + 0.30;
+      colors[i*3+2] = 0.46 * fade + 0.20;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const mat = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.75,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const line = new THREE.Line(geo, mat);
+    scene.add(line);
+    compassLines.push(line);
+  }
 }
 
 // Rebuild all columns from scratch based on the active dataset.
@@ -1485,11 +1637,12 @@ function rebuildColumns() {
 
     const mark = makeMark(a);
     mark.position.x = px;
-    mark.position.y = 0.05;
+    mark.position.y = 0.6;     // ~0.36m up — invisible from any normal angle, kills z-fighting
     mark.position.z = pz;
     scene.add(mark);
     markMeshes.set(a.id, mark);
   }
+  refreshCompassLines();
   updateColumnPositions();
 }
 
@@ -1777,9 +1930,14 @@ document.getElementById('btn-continue').addEventListener('click', () => {
   show('screen-future');
 });
 
-// Back from screen-future → screen-log
+// Back from screen-future → screen-log (or screen-main if reconsidering)
 document.getElementById('btn-back-future').addEventListener('click', () => {
-  show('screen-log');
+  if (S.reconsiderAnxietyId) {
+    S.reconsiderAnxietyId = null;
+    show('screen-main');
+  } else {
+    show('screen-log');
+  }
 });
 
 // Continue from screen-future → screen-present (the colour-pick step).
@@ -1817,17 +1975,37 @@ document.querySelectorAll('#present-options .reflect-option').forEach(btn => {
   });
 });
 
-// Save: build anxiety with everything captured and persist.
+// Save: in reconsider mode, append to the existing anxiety; otherwise create
+// a new one.
 document.getElementById('btn-save').addEventListener('click', async () => {
+  const priorAnswer = (S.selectedPriorAnswer || '').trim();
+  if (!priorAnswer) return;
+  const priorExpectation = S.selectedPriorExpectation;
+  if (!priorExpectation) return;
+
+  if (S.reconsiderAnxietyId) {
+    // Reconsider: append to existing entry
+    const target = S.anxieties.find(a => a.id === S.reconsiderAnxietyId);
+    if (target) {
+      target.priorExpectations = target.priorExpectations || [];
+      target.priorAnswers = target.priorAnswers || [];
+      target.priorExpectations.push(priorExpectation);
+      target.priorAnswers.push(priorAnswer);
+      target.priorExpectation = priorExpectation;
+      target.priorAnswer = priorAnswer;
+      persist();
+    }
+    S.reconsiderAnxietyId = null;
+    window.location.reload();
+    return;
+  }
+
+  // Fresh log: requires pendingPos + label + time
   if (!S.pendingPos) return;
   const resolvedAt = S.selectedResolvedAt;
   if (!resolvedAt || resolvedAt <= nowMs()) return;
   const label = (S.selectedLabel || '').trim();
   if (!label) return;
-  const priorAnswer = (S.selectedPriorAnswer || '').trim();
-  if (!priorAnswer) return;
-  const priorExpectation = S.selectedPriorExpectation;
-  if (!priorExpectation) return;
   const createdAt = nowMs();
   const anxiety = {
     id: 'a_' + createdAt + '_' + Math.random().toString(36).slice(2,7),
@@ -1835,16 +2013,17 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     lng: S.pendingPos.lng,
     createdAt,
     resolvedAt,
-    label,                       // required
-    priorExpectation,            // 'better' | 'same' | 'worse'  (picked AFTER the time-capsule)
-    priorAnswer,                 // the future-self answer
-    reflection: null,            // 'better' | 'same' | 'worse' | null
-    reflectionText: null,        // set later, when the user reflects after resolution
+    label,                           // required
+    priorExpectation,                // latest of priorExpectations (shadow accessor)
+    priorAnswer,                     // latest of priorAnswers
+    priorExpectations: [priorExpectation],  // array — grows if the user re-does
+    priorAnswers: [priorAnswer],
+    reflection: null,
+    reflectionText: null,
   };
   S.anxieties.push(anxiety);
   persist();
 
-  // Shared map: send only the lat/lng/time + the colour fields. Text stays private.
   if (S.shareConsent) {
     supabaseInsertAnxiety(anxiety.lat, anxiety.lng, anxiety.resolvedAt, {
       priorExpectation: anxiety.priorExpectation,
@@ -1852,9 +2031,33 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     });
   }
 
-  // Reload to use the working refresh path
   window.location.reload();
 });
+
+// Open the reconsider flow: pre-fill what's needed and skip directly to
+// screen-future (the time-capsule step). Keeps the user's existing label
+// and resolved time; just collects a new prior expectation + answer.
+function openReconsiderFlow(anxietyId) {
+  const anxiety = S.anxieties.find(a => a.id === anxietyId);
+  if (!anxiety) return;
+  S.reconsiderAnxietyId = anxietyId;
+  // Pre-fill the wizard state from the existing anxiety so the save handler
+  // can also derive label/time, even though those won't change.
+  S.pendingPos = { lat: anxiety.lat, lng: anxiety.lng };
+  S.selectedResolvedAt = anxiety.resolvedAt;
+  S.selectedLabel = anxiety.label;
+  S.selectedPriorAnswer = null;
+  S.selectedPriorExpectation = null;
+  // Set up the screen-future banner
+  document.getElementById('future-banner-date').textContent = fmtDate(anxiety.resolvedAt);
+  document.getElementById('prior-prompt-text').textContent = drawPrompt();
+  document.getElementById('prior-text').value = '';
+  document.getElementById('btn-to-present').disabled = true;
+  // Reset present-screen
+  document.querySelectorAll('#present-options .reflect-option').forEach(b => b.classList.remove('selected'));
+  document.getElementById('btn-save').disabled = true;
+  show('screen-future');
+}
 
 // ── Modal: consent + about ─────────────────────────────────────
 function openModal(isOnboarding) {
@@ -1901,9 +2104,9 @@ async function setMapMode(mode) {
     toast('Loading shared map…');
     S.sharedAnxieties = await supabaseFetchAnxieties();
     if (S.sharedAnxieties.length === 0) {
-      toast('No shared anxieties yet — be the first!');
+      toast('No shared entries yet — be the first!');
     } else {
-      toast(`Showing ${S.sharedAnxieties.length} shared anxieties`);
+      toast(`Showing ${S.sharedAnxieties.length} shared entries`);
     }
   }
   rebuildColumns();
@@ -2131,9 +2334,7 @@ function openViewModal(anxietyId) {
   if (!anxiety) return;
   viewCurrent = anxietyId;
   // Render the mark thumbnail at the top — the same visual signature as on the map.
-  const priorHexForThumb = REFLECT_COLORS[anxiety.priorExpectation] || REFLECT_COLORS.null;
-  const reflHexForThumb = REFLECT_COLORS[anxiety.reflection] || REFLECT_COLORS.null;
-  const thumbCanvas = makeMarkCanvas(priorHexForThumb, reflHexForThumb);
+  const thumbCanvas = makeMarkCanvas(markStopsForAnxiety(anxiety));
   const thumbEl = document.getElementById('view-mark-thumb');
   thumbEl.style.backgroundImage = `url(${thumbCanvas.toDataURL()})`;
   thumbEl.style.backgroundSize = 'cover';
@@ -2276,12 +2477,8 @@ function renderListItem(anxiety, kind) {
   row.className = 'list-item';
   row.type = 'button';
 
-  // Mark thumbnail. For active columns (still ahead), use prior colour as
-  // inner and white as outer — matching the "logged but unreflected" look.
-  // For waiting + done items, use the mark gradient with whatever state exists.
-  const priorHex = REFLECT_COLORS[anxiety.priorExpectation] || REFLECT_COLORS.null;
-  const reflHex  = REFLECT_COLORS[anxiety.reflection] || REFLECT_COLORS.null;
-  const canvas = makeMarkCanvas(priorHex, reflHex);
+  // Mark thumbnail — matches the visual on the map.
+  const canvas = makeMarkCanvas(markStopsForAnxiety(anxiety));
   const thumb = document.createElement('div');
   thumb.className = 'list-item-mark';
   thumb.style.backgroundImage = `url(${canvas.toDataURL()})`;
@@ -2307,20 +2504,31 @@ function renderListItem(anxiety, kind) {
   const detail = document.createElement('div');
   detail.className = 'list-item-detail';
 
-  // Prior section
-  if (anxiety.priorAnswer || anxiety.priorExpectation) {
+  // Prior section(s) — show every expectation in chronological order so the
+  // user can see how their projection evolved if they re-did.
+  const priors = (anxiety.priorExpectations && anxiety.priorExpectations.length > 0)
+    ? anxiety.priorExpectations
+    : (anxiety.priorExpectation ? [anxiety.priorExpectation] : []);
+  const priorAnswers = (anxiety.priorAnswers && anxiety.priorAnswers.length > 0)
+    ? anxiety.priorAnswers
+    : (anxiety.priorAnswer ? [anxiety.priorAnswer] : []);
+  for (let i = 0; i < priors.length; i++) {
+    const hex = REFLECT_COLORS[priors[i]] || REFLECT_COLORS.null;
     const block = document.createElement('div');
     block.className = 'list-detail-block';
     const label = document.createElement('div');
     label.className = 'list-detail-label';
+    const heading = priors.length === 1 ? 'What I imagined' :
+                    i === 0 ? 'What I imagined' :
+                    `What I imagined (revised, take ${i + 1})`;
     label.innerHTML =
-      `<span class="list-detail-swatch" style="background:${priorHex}"></span>` +
-      `<span>What I imagined</span>`;
+      `<span class="list-detail-swatch" style="background:${hex}"></span>` +
+      `<span>${heading}</span>`;
     block.appendChild(label);
-    if (anxiety.priorAnswer) {
+    if (priorAnswers[i]) {
       const text = document.createElement('div');
       text.className = 'list-detail-text';
-      text.textContent = anxiety.priorAnswer;
+      text.textContent = priorAnswers[i];
       block.appendChild(text);
     }
     detail.appendChild(block);
@@ -2328,6 +2536,7 @@ function renderListItem(anxiety, kind) {
 
   // Reflection section (only if reflected)
   if (anxiety.reflection) {
+    const reflHex = REFLECT_COLORS[anxiety.reflection] || REFLECT_COLORS.null;
     const block = document.createElement('div');
     block.className = 'list-detail-block';
     const label = document.createElement('div');
@@ -2346,23 +2555,61 @@ function renderListItem(anxiety, kind) {
   }
 
   // Action button: only for items waiting for reflection — opens the
-  // reflect modal directly from the list (so the user doesn't need to be
-  // physically near the spot to reflect).
-  if (kind === 'wait') {
+  // Action buttons by section
+  const actions = document.createElement('div');
+  actions.style.display = 'flex';
+  actions.style.flexWrap = 'wrap';
+  actions.style.gap = '8px';
+  actions.style.marginTop = '10px';
+
+  if (kind === 'ahead') {
+    // Active column: let the user reconsider their expectation, or mark it
+    // as already past (early-resolve into the reflection flow).
+    const reconsider = document.createElement('button');
+    reconsider.className = 'list-item-action';
+    reconsider.type = 'button';
+    reconsider.textContent = 'Reconsider';
+    reconsider.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeListModal();
+      setTimeout(() => openReconsiderFlow(anxiety.id), 180);
+    });
+    actions.appendChild(reconsider);
+
+    const pastIt = document.createElement('button');
+    pastIt.className = 'list-item-action';
+    pastIt.type = 'button';
+    pastIt.style.background = 'transparent';
+    pastIt.style.color = 'var(--accent)';
+    pastIt.style.border = '1px solid var(--accent)';
+    pastIt.textContent = "I'm already past it";
+    pastIt.addEventListener('click', (e) => {
+      e.stopPropagation();
+      reflectSeenThisSession.delete(anxiety.id);
+      // Set resolvedAt to now, persist, rebuild, open reflect modal
+      const target = S.anxieties.find(a => a.id === anxiety.id);
+      if (target) {
+        target.resolvedAt = nowMs();
+        persist();
+        rebuildColumns();
+      }
+      closeListModal();
+      setTimeout(() => openReflectModal(anxiety.id), 180);
+    });
+    actions.appendChild(pastIt);
+  } else if (kind === 'wait') {
     const act = document.createElement('button');
     act.className = 'list-item-action';
     act.type = 'button';
     act.textContent = 'Reflect now';
     act.addEventListener('click', (e) => {
       e.stopPropagation();
-      // Allow re-prompting later if user closes without finishing
       reflectSeenThisSession.delete(anxiety.id);
       closeListModal();
       setTimeout(() => openReflectModal(anxiety.id), 180);
     });
-    detail.appendChild(act);
+    actions.appendChild(act);
   } else if (kind === 'done') {
-    // Allow editing existing reflections from here too
     const act = document.createElement('button');
     act.className = 'list-item-action';
     act.type = 'button';
@@ -2373,8 +2620,10 @@ function renderListItem(anxiety, kind) {
       closeListModal();
       setTimeout(() => openReflectModal(anxiety.id), 180);
     });
-    detail.appendChild(act);
+    actions.appendChild(act);
   }
+
+  if (actions.children.length > 0) detail.appendChild(actions);
 
   body.appendChild(detail);
   row.appendChild(body);
@@ -2424,15 +2673,17 @@ document.getElementById('early-confirm').addEventListener('click', () => {
   const id = earlyCurrent;
   if (anxiety) {
     anxiety.resolvedAt = nowMs();
-    // Also clear from session-seen so the reflect modal can open right after
     reflectSeenThisSession.delete(id);
     persist();
-    // The column's resolvedAt has changed — its userData needs to reflect this
-    // for sinking math and visibility checks. Easiest: rebuild columns.
     rebuildColumns();
   }
   closeEarlyResolveModal();
   if (id) setTimeout(() => openReflectModal(id), 180);
+});
+document.getElementById('early-reconsider').addEventListener('click', () => {
+  const id = earlyCurrent;
+  closeEarlyResolveModal();
+  if (id) setTimeout(() => openReconsiderFlow(id), 180);
 });
 
 // ── Extend flow ("This isn't over yet") ──
