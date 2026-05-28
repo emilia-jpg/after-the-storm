@@ -1572,7 +1572,7 @@ function setMarkReflection(anxietyId, reflection) {
 // Cluster threshold: any two entries within ~200m group together.
 const COMPASS_CLUSTER_THRESHOLD = 333;  // ~200m in world units (0.6m/unit)
 const COMPASS_MIN_DISTANCE      = 35;   // ~21m: only skip lines for very-close stuff
-const COMPASS_MAX_DISTANCE      = 6500; // ~3.9km: anything further is off-map
+const COMPASS_MAX_DISTANCE      = 50000; // ~30km: only skip cross-country-distant stuff
 
 function clusterEntries(entries) {
   // entries: [{ x, z, id }]. Returns: [{ x, z, count }] for each cluster.
@@ -1626,12 +1626,17 @@ function refreshCompassLines() {
     if (d < COMPASS_MIN_DISTANCE) continue;
     if (d > COMPASS_MAX_DISTANCE) continue;
 
-    // Start ~20 units from user, end ~25 units short of cluster
     const dirX = c.x / d, dirZ = c.z / d;
     const startMargin = 20;
     const endMargin   = 25;
     const sx = dirX * startMargin, sz = dirZ * startMargin;
-    const ex = c.x - dirX * endMargin, ez = c.z - dirZ * endMargin;
+    // For far-away clusters, cap the line endpoint at the edge of the detail
+    // plane (820 units, just inside the 860-radius disc) — the line still
+    // points correctly toward the cluster but doesn't extend off the visible
+    // ground. Closer clusters still terminate just short of their centroid.
+    const PLANE_EDGE = 820;
+    const targetD = Math.min(d - endMargin, PLANE_EDGE);
+    const ex = dirX * targetD, ez = dirZ * targetD;
     const length = Math.hypot(ex - sx, ez - sz);
     if (length < 5) continue;
 
