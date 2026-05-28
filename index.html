@@ -745,7 +745,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Replace these two values with your project's URL and anon key.
 // They're safe to put in client-side code: Row Level Security
 // in the database controls what they can do.
-let SUPABASE_URL = 'https://jpgotzihotnifhldjqpa.supabase.co';          // e.g. https://xxxxx.supabase.co
+let SUPABASE_URL = 'Yhttps://jpgotzihotnifhldjqpa.supabase.co';          // e.g. https://xxxxx.supabase.co
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwZ290emlob3RuaWZobGRqcXBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMDY1NjAsImV4cCI6MjA5NDY4MjU2MH0.vTt4SPjE4op9plhlAhDjnwsB29ENeQHPf75w7cxLeYU';
 
 // Normalise the URL: trim whitespace and strip any trailing slash, so that
@@ -1571,7 +1571,7 @@ function setMarkReflection(anxietyId, reflection) {
 // far enough away that you can't easily see them (>~36m / >60 world units).
 // Cluster threshold: any two entries within ~200m group together.
 const COMPASS_CLUSTER_THRESHOLD = 333;  // ~200m in world units (0.6m/unit)
-const COMPASS_MIN_DISTANCE      = 60;   // ~36m: don't bother for close-by stuff
+const COMPASS_MIN_DISTANCE      = 35;   // ~21m: only skip lines for very-close stuff
 const COMPASS_MAX_DISTANCE      = 6500; // ~3.9km: anything further is off-map
 
 function clusterEntries(entries) {
@@ -1635,20 +1635,22 @@ function refreshCompassLines() {
     const length = Math.hypot(ex - sx, ez - sz);
     if (length < 5) continue;
 
-    // Thin flat ribbon — narrow enough to read as a line, wide enough to
-    // remain visible across browsers (WebGL ignores Line widths > 1).
-    const RIBBON_WIDTH = 0.7;   // ~0.4m wide
+    const RIBBON_WIDTH = 0.7;
     const SEGMENTS = 24;
-    // Build a custom geometry with two strips of vertices so we can per-vertex
-    // colour them. Uses 4-component vertex colours (RGBA) so we can also
-    // fade the alpha — that gives a clean dissolve-from-nothing at the
-    // user-end of the ribbon rather than a hard start.
+    // Custom geometry: two parallel strips of vertices joined by triangles,
+    // so we can per-vertex colour them for the fade along the length.
+    // We bake the fade into the RGB channels (lerping the line colour toward
+    // pure white at the user-end) instead of using vertex alpha — three.js
+    // version-dependent quirks around RGBA vertex colour interpretation can
+    // make alpha-baked fades render invisible. Lerping the colour itself is
+    // robust and the visual result is the same on a white background.
     const positions = new Float32Array((SEGMENTS + 1) * 2 * 3);
-    const colors    = new Float32Array((SEGMENTS + 1) * 2 * 4);
+    const colors    = new Float32Array((SEGMENTS + 1) * 2 * 3);
     const indices   = [];
-    // Perpendicular vector (in XZ plane) to offset the strip's two sides
     const px = -dirZ * (RIBBON_WIDTH / 2);
     const pz =  dirX * (RIBBON_WIDTH / 2);
+    // Target colour at the bright (cluster) end of the ribbon
+    const TARGET_R = 0.13, TARGET_G = 0.69, TARGET_B = 0.46;
     for (let i = 0; i <= SEGMENTS; i++) {
       const t = i / SEGMENTS;
       const cx = sx + (ex - sx) * t;
@@ -1659,22 +1661,15 @@ function refreshCompassLines() {
       positions[(i*2+1)*3]     = cx - px;
       positions[(i*2+1)*3 + 1] = 0.35;
       positions[(i*2+1)*3 + 2] = cz - pz;
-      // RGB: same accent-green tone as before
-      const colourFade = 0.25 + t * 0.55;
-      const r = 0.11 * colourFade + 0.10;
-      const g = 0.69 * colourFade + 0.30;
-      const b = 0.46 * colourFade + 0.20;
-      // Alpha: ramp very gradually from 0 at the user end up to full near
-      // Alpha: soft fade-in at the user end, reaching full opacity by roughly
-      // the midpoint so the line clearly reads as travelling toward the
-      // cluster (not just a short stub near the destination).
-      const aRaw = t * t * (3.0 - 2.0 * t);   // smoothstep
-      const a = aRaw * 0.9;
+      // Smoothstep from white (near user) to target green (near cluster)
+      const tt = t * t * (3.0 - 2.0 * t);
+      const r = 1.0 - (1.0 - TARGET_R) * tt;
+      const g = 1.0 - (1.0 - TARGET_G) * tt;
+      const b = 1.0 - (1.0 - TARGET_B) * tt;
       for (const idx of [i*2, i*2+1]) {
-        colors[idx*4]     = r;
-        colors[idx*4 + 1] = g;
-        colors[idx*4 + 2] = b;
-        colors[idx*4 + 3] = a;
+        colors[idx*3]     = r;
+        colors[idx*3 + 1] = g;
+        colors[idx*3 + 2] = b;
       }
       if (i < SEGMENTS) {
         const a0 = i*2, a1 = i*2+1, b0 = (i+1)*2, b1 = (i+1)*2+1;
@@ -1683,14 +1678,10 @@ function refreshCompassLines() {
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geo.setAttribute('color',    new THREE.BufferAttribute(colors, 4));   // RGBA
+    geo.setAttribute('color',    new THREE.BufferAttribute(colors, 3));
     geo.setIndex(indices);
     const mat = new THREE.MeshBasicMaterial({
       vertexColors: true,
-      transparent: true,
-      // No global opacity multiplier — alpha now comes from the vertex
-      // attribute itself, which is what gives the fade-from-nothing.
-      opacity: 1.0,
       depthWrite: false,
       toneMapped: false,
       side: THREE.DoubleSide,
@@ -1699,6 +1690,7 @@ function refreshCompassLines() {
     scene.add(mesh);
     compassLines.push(mesh);
   }
+  console.log(`compass: ${entries.length} entries, ${clusters.length} clusters, ${compassLines.length} lines drawn`);
 }
 
 // Rebuild all columns from scratch based on the active dataset.
