@@ -1665,11 +1665,11 @@ function refreshCompassLines() {
       const g = 0.69 * colourFade + 0.30;
       const b = 0.46 * colourFade + 0.20;
       // Alpha: ramp very gradually from 0 at the user end up to full near
-      // the cluster. Squaring the smoothstep keeps the ribbon nearly
-      // invisible for the first half and only brings it in for the second —
-      // gives a softer, longer fade-in toward the user.
+      // Alpha: soft fade-in at the user end, reaching full opacity by roughly
+      // the midpoint so the line clearly reads as travelling toward the
+      // cluster (not just a short stub near the destination).
       const aRaw = t * t * (3.0 - 2.0 * t);   // smoothstep
-      const a = aRaw * aRaw * 0.95;
+      const a = aRaw * 0.9;
       for (const idx of [i*2, i*2+1]) {
         colors[idx*4]     = r;
         colors[idx*4 + 1] = g;
