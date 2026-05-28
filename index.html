@@ -745,8 +745,13 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 // Replace these two values with your project's URL and anon key.
 // They're safe to put in client-side code: Row Level Security
 // in the database controls what they can do.
-const SUPABASE_URL = 'https://jpgotzihotnifhldjqpa.supabase.co';        // e.g. https://xxxxx.supabase.co
+let SUPABASE_URL = 'https://jpgotzihotnifhldjqpa.supabase.co';          // e.g. https://xxxxx.supabase.co
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwZ290emlob3RuaWZobGRqcXBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMDY1NjAsImV4cCI6MjA5NDY4MjU2MH0.vTt4SPjE4op9plhlAhDjnwsB29ENeQHPf75w7cxLeYU';
+
+// Normalise the URL: trim whitespace and strip any trailing slash, so that
+// `${SUPABASE_URL}/rest/v1/...` never produces a double slash (which the
+// Supabase gateway misroutes into a CORS-less 404).
+SUPABASE_URL = SUPABASE_URL.trim().replace(/\/+$/, '');
 
 // True when both config values are set to something real
 const SUPABASE_CONFIGURED =
@@ -757,38 +762,94 @@ const SUPABASE_CONFIGURED =
 // We make raw fetch calls to the auto-generated PostgREST API instead of
 // pulling in the @supabase/supabase-js library — saves a dependency.
 
-async function supabaseInsertAnxiety(lat, lng, resolvedAt, extras) {
-  if (!SUPABASE_CONFIGURED) return;
-  // Client-side rounding too (defence in depth — server enforces too)
-  const safeLat = Math.round(lat * 1000) / 1000;
-  const safeLng = Math.round(lng * 1000) / 1000;
-  // Colour fields are personal-but-non-identifying: they describe how a
-  // person felt about a place, which is part of the collective signal.
-  // Text fields (label, priorAnswer, reflectionText) are NEVER sent.
+// Low-level POST of an already-built body. Throws on any failure (network
+// error OR non-2xx response) so callers can decide whether to queue it.
+async function postAnxietyBody(body) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/anxieties`, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=minimal',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase insert failed: ${res.status} ${text}`);
+  }
+}
+
+// Build the shareable body from raw fields. Rounds coordinates (defence in
+// depth — the server trigger also rounds). Text fields are never included.
+function buildShareBody(lat, lng, resolvedAt, extras) {
   const body = {
-    lat: safeLat,
-    lng: safeLng,
+    lat: Math.round(lat * 1000) / 1000,
+    lng: Math.round(lng * 1000) / 1000,
     resolved_at: new Date(resolvedAt).toISOString(),
   };
   if (extras && extras.priorExpectation) body.prior_expectation = extras.priorExpectation;
   if (extras && extras.reflection) body.reflection = extras.reflection;
+  return body;
+}
+
+// ── Offline-resilient share queue ──
+// If an insert fails (offline, flaky network), the payload is stored in
+// localStorage and retried on next app load / when connectivity returns.
+const SHARE_QUEUE_KEY = 'anchor-share-queue';
+
+function loadShareQueue() {
+  try { return JSON.parse(localStorage.getItem(SHARE_QUEUE_KEY) || '[]'); }
+  catch { return []; }
+}
+function saveShareQueue(q) {
+  try { localStorage.setItem(SHARE_QUEUE_KEY, JSON.stringify(q)); } catch {}
+}
+function enqueueShare(body) {
+  const q = loadShareQueue();
+  q.push(body);
+  saveShareQueue(q);
+}
+
+// Try to send everything in the queue, one at a time. Items that succeed are
+// removed; the first failure stops the flush (we'll retry the rest later).
+let flushingQueue = false;
+async function flushShareQueue() {
+  if (!SUPABASE_CONFIGURED || flushingQueue) return;
+  let q = loadShareQueue();
+  if (q.length === 0) return;
+  flushingQueue = true;
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/anxieties`, {
-      method: 'POST',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal',
-      },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      console.warn('Supabase insert failed:', res.status, text);
+    while (q.length > 0) {
+      const body = q[0];
+      try {
+        await postAnxietyBody(body);
+        q.shift();                 // success — drop it
+        saveShareQueue(q);
+      } catch (err) {
+        // Still failing — leave the queue as-is and stop for now
+        console.warn('Share queue flush paused (will retry later):', err);
+        break;
+      }
     }
+  } finally {
+    flushingQueue = false;
+  }
+}
+
+async function supabaseInsertAnxiety(lat, lng, resolvedAt, extras) {
+  if (!SUPABASE_CONFIGURED) return;
+  const body = buildShareBody(lat, lng, resolvedAt, extras);
+  try {
+    await postAnxietyBody(body);
+    // On a successful insert, also try to drain anything that queued earlier.
+    flushShareQueue();
   } catch (err) {
-    console.warn('Supabase insert error:', err);
+    // Failed — stash it for a later retry instead of losing it.
+    console.warn('Insert failed, queuing for retry:', err);
+    enqueueShare(body);
+    throw err;   // let the caller know (it still proceeds with reload)
   }
 }
 
@@ -1603,11 +1664,12 @@ function refreshCompassLines() {
       const r = 0.11 * colourFade + 0.10;
       const g = 0.69 * colourFade + 0.30;
       const b = 0.46 * colourFade + 0.20;
-      // Alpha: ramp from 0 at the user end up to full near the cluster.
-      // Using a smooth curve (smoothstep) makes the start dissolve in
-      // softly. Peaks at 0.85 to keep the overall opacity comfortable.
+      // Alpha: ramp very gradually from 0 at the user end up to full near
+      // the cluster. Squaring the smoothstep keeps the ribbon nearly
+      // invisible for the first half and only brings it in for the second —
+      // gives a softer, longer fade-in toward the user.
       const aRaw = t * t * (3.0 - 2.0 * t);   // smoothstep
-      const a = aRaw * 0.85;
+      const a = aRaw * aRaw * 0.95;
       for (const idx of [i*2, i*2+1]) {
         colors[idx*4]     = r;
         colors[idx*4 + 1] = g;
@@ -1798,6 +1860,12 @@ whenSized(document.getElementById('three-canvas'), () => {
   initThree();
   startWatch();
 });
+
+// Try to send any entries that failed to share earlier (offline, flaky net).
+// A small delay keeps the initial render unblocked.
+setTimeout(() => { flushShareQueue(); }, 2500);
+// And whenever the browser regains connectivity.
+window.addEventListener('online', () => { flushShareQueue(); });
 
 // ── Events: log flow ───────────────────────────────────────────
 
@@ -2065,10 +2133,17 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   persist();
 
   if (S.shareConsent) {
-    supabaseInsertAnxiety(anxiety.lat, anxiety.lng, anxiety.resolvedAt, {
-      priorExpectation: anxiety.priorExpectation,
-      reflection: null,
-    });
+    // Await the insert so the page reload below doesn't cancel the in-flight
+    // request. (Fire-and-forget + immediate reload was killing some inserts,
+    // which is why not all entries showed up on the shared map.)
+    try {
+      await supabaseInsertAnxiety(anxiety.lat, anxiety.lng, anxiety.resolvedAt, {
+        priorExpectation: anxiety.priorExpectation,
+        reflection: null,
+      });
+    } catch (e) {
+      console.warn('Share insert failed (entry still saved locally):', e);
+    }
   }
 
   window.location.reload();
