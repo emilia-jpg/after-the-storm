@@ -1,2874 +1,1205 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Anchor — Time</title>
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
-  }
-}
-</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Emotional Weather — Vienna Forecast</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
+      onerror="this.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'" />
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  /* "Night" vars now represent the light surfaces (kept the var names so the
-     rest of the CSS still works without renaming). */
-  --night:#ffffff;--night-2:#f7f7f5;--night-3:#eeeeea;
-  --text:#1d1d1b;--text-m:#5b5b56;--text-f:#9a9a92;
-  --border:rgba(0,0,0,.12);
-  --accent:#1db075;--accent-d:#176555;
-  --warn:#c0443b;
-  --r:14px;--r-sm:8px;--r-lg:22px;
-}
-html,body{height:100%;font-family:Georgia,serif;font-size:15px;color:var(--text);background:var(--night);overflow:hidden}
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #ffffff; color: #2a2a2d;
+  }
+  body { display: flex; flex-direction: column; }
 
-.screen{display:none;position:fixed;inset:0;overflow-y:auto}
-.screen.active{display:block}
+  /* Header */
+  header {
+    padding: 14px 18px;
+    background: rgba(255,255,255,0.95);
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+  }
+  header h1 { margin: 0; font-size: 16px; font-weight: 500; letter-spacing: 0.02em; color: #2a2a2d; }
+  header .sub { font-size: 12px; color: #6a6a6d; margin-top: 2px; }
 
-/* ── MAIN 3D ── */
-#screen-main{overflow:hidden;background:var(--night)}
-#three-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  /* Map */
+  #map { flex: 1; background: #ffffff; }
 
-.archive-toggle{position:absolute;top:16px;right:14px;background:rgba(255,255,255,.78);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--border);color:var(--text-m);padding:9px 14px;border-radius:11px;cursor:pointer;font-family:system-ui,sans-serif;font-size:12px;z-index:500;display:flex;align-items:center;gap:6px;transition:color .2s,background .2s}
-.archive-toggle:hover{background:rgba(29,176,117,.12);color:var(--text)}
-.archive-toggle.active{background:var(--accent);color:#ffffff;border-color:var(--accent)}
+  /* Bottom controls */
+  .controls {
+    padding: 14px 18px;
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid rgba(0,0,0,0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .row button {
+    background: #f6f6f7;
+    border: 1px solid rgba(0,0,0,0.12);
+    color: #2a2a2d;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .row button:hover { background: #ececef; }
+  .row button.primary {
+    background: #2a6fc1;
+    border-color: #2a6fc1;
+    color: white;
+  }
+  .row button.primary:hover { background: #1f5fab; }
+  .status { font-size: 12px; color: #6a6a6d; }
 
-.bottom-bar{position:fixed;bottom:0;left:0;right:0;padding:12px 16px 28px;z-index:600;background:linear-gradient(to top,rgba(255,255,255,1) 60%,rgba(255,255,255,0))}
+  /* Log modal */
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(120,120,130,0.35);
+    backdrop-filter: blur(6px);
+    z-index: 1000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-backdrop.show { display: flex; }
+  .modal {
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 22px;
+    max-width: 340px;
+    width: 90%;
+    border: 1px solid rgba(0,0,0,0.10);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.18);
+    color: #2a2a2d;
+  }
+  .modal h2 { margin: 0 0 8px; font-size: 15px; font-weight: 500; }
+  .modal .help { font-size: 12px; color: #6a6a6d; margin-bottom: 18px; }
+  .modal .slider-labels {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: #6a6a6d;
+    margin-top: 6px;
+  }
+  .modal input[type=range] {
+    width: 100%;
+    accent-color: #2a6fc1;
+  }
+  .modal .modal-buttons {
+    display: flex; gap: 8px; justify-content: flex-end;
+    margin-top: 20px;
+  }
 
-.btn-log{display:block;width:100%;max-width:480px;margin:0 auto;padding:17px;background:var(--accent);color:#fff;border:none;border-radius:var(--r-lg);font-family:system-ui,sans-serif;font-size:16px;font-weight:600;cursor:pointer;transition:background .2s,transform .1s;box-shadow:0 4px 18px rgba(29,176,117,.30)}
-.btn-log:hover{background:#17935f}
-.btn-log:active{transform:scale(.98)}
+  /* Paint modal — bigger than the slider one */
+  .modal.modal-paint {
+    max-width: 560px;
+  }
+  .paint-row {
+    display: flex;
+    gap: 18px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .picker-block { display: flex; flex-direction: column; gap: 4px; }
+  .picker {
+    position: relative;
+    width: 160px; height: 160px;
+    border-radius: 6px;
+    overflow: hidden;
+    cursor: crosshair;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .picker-labels {
+    position: relative;
+    width: 160px; font-size: 10px;
+    color: rgba(255,255,255,0.7);
+    margin-bottom: 4px;
+    height: 0;       /* zero-height: labels overlap the canvas */
+  }
+  .picker-labels span {
+    position: absolute;
+    padding: 2px 4px;
+    background: rgba(255,255,255,0.85);
+    color: #2a2a2d;
+    border-radius: 3px;
+    pointer-events: none;
+    z-index: 2;
+    font-size: 9px;
+  }
+  .lbl-tl { top: 8px; left: 6px; }
+  .lbl-tr { top: 8px; right: 6px; }
+  .lbl-bl { top: 144px; left: 6px; }
+  .lbl-br { top: 144px; right: 6px; }
+  .picker-pin {
+    position: absolute;
+    width: 14px; height: 14px;
+    border: 2px solid #2a2a2d;
+    border-radius: 50%;
+    background: transparent;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.9);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    left: 50%; top: 50%;
+  }
+  .picker-help {
+    font-size: 10px;
+    color: #6a6a6d;
+    text-align: center;
+  }
+  .tool-block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
+    min-width: 100px;
+  }
+  .tool-btn {
+    background: #f6f6f7;
+    border: 1px solid rgba(0,0,0,0.12);
+    color: #2a2a2d;
+    padding: 7px 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .tool-btn:hover { background: #ececef; }
+  .tool-btn.active {
+    background: #2a6fc1;
+    border-color: #2a6fc1;
+    color: white;
+  }
+  .tool-btn.small { font-size: 11px; padding: 5px 10px; }
+  .size-label {
+    font-size: 11px;
+    color: #6a6a6d;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .size-label input { width: 100%; accent-color: #2a6fc1; }
+  .paint-area {
+    position: relative;
+    width: 320px; height: 320px;
+    margin: 0 auto;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 1px solid rgba(0,0,0,0.10);
+    background: #fafafa;
+  }
+  .paint-area canvas {
+    display: block;
+    width: 100%; height: 100%;
+    cursor: crosshair;
+    touch-action: none;
+  }
+  .paint-area .paint-pin {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    color: rgba(40,40,45,0.9);
+    text-shadow: 0 0 4px rgba(255,255,255,0.9);
+    pointer-events: none;
+    font-size: 14px;
+  }
+  .paint-area-help {
+    font-size: 10px;
+    color: #6a6a6d;
+    text-align: center;
+    margin: 6px 0 0;
+  }
 
-/* ── LOG SCREEN ── */
-#screen-log,#screen-future,#screen-present{background:var(--night)}
-.log-wrap{max-width:520px;margin:0 auto;padding:40px 24px 80px;display:flex;flex-direction:column;gap:22px}
-.btn-back{display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--text-m);font-size:14px;font-family:system-ui,sans-serif;cursor:pointer;padding:6px 0;transition:color .2s}
-.btn-back:hover{color:var(--text)}
-h1{font-size:24px;font-weight:700;letter-spacing:-.4px;line-height:1.25}
-.intro{font-size:14px;color:var(--text-m);line-height:1.7;font-family:system-ui,sans-serif}
+  /* Legend */
+  .legend {
+    position: absolute; top: 80px; right: 14px;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(4px);
+    padding: 8px 10px; border-radius: 6px;
+    font-size: 10px;
+    z-index: 500;
+    color: #2a2a2d;
+    border: 1px solid rgba(0,0,0,0.08);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
 
-.section{display:flex;flex-direction:column;gap:10px;font-family:system-ui,sans-serif}
-.section-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--text-f)}
-.section-help{font-size:13px;color:var(--text-m);line-height:1.55}
+  /* GPS pin animation */
+  .gps-pin {
+    width: 14px; height: 14px;
+    background: #6bcf78;
+    border: 2px solid white;
+    border-radius: 50%;
+    box-shadow: 0 0 0 0 rgba(107, 207, 120, 0.7);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(107, 207, 120, 0.7); }
+    70% { box-shadow: 0 0 0 12px rgba(107, 207, 120, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(107, 207, 120, 0); }
+  }
 
-.location-status{background:var(--night-2);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px 16px;font-size:13px;color:var(--text-m);font-family:system-ui,monospace}
-
-.duration-input{display:flex;gap:8px;align-items:center}
-.duration-input input{flex:1;padding:14px;border:1px solid var(--border);border-radius:var(--r);background:var(--night-2);font-family:system-ui,sans-serif;font-size:15px;color:var(--text);outline:none;transition:border-color .2s}
-.duration-input input:focus{border-color:var(--accent)}
-.duration-input select{padding:14px;border:1px solid var(--border);border-radius:var(--r);background:var(--night-2);font-family:system-ui,sans-serif;font-size:15px;color:var(--text);outline:none;cursor:pointer}
-
-.label-input{
-  width:100%;padding:14px;border:1px solid var(--border);border-radius:var(--r);
-  background:var(--night-2);font-family:system-ui,sans-serif;font-size:15px;
-  color:var(--text);outline:none;transition:border-color .2s;
-}
-.label-input:focus{border-color:var(--accent)}
-.label-input::placeholder{color:var(--text-f);font-style:italic}
-
-.mode-tabs{display:flex;gap:0;background:var(--night-2);border:1px solid var(--border);border-radius:var(--r);padding:4px;font-family:system-ui,sans-serif}
-.mode-tab{flex:1;background:none;border:none;color:var(--text-m);font-family:system-ui,sans-serif;font-size:13px;padding:9px 8px;border-radius:calc(var(--r) - 4px);cursor:pointer;transition:background .2s,color .2s}
-.mode-tab:hover{color:var(--text)}
-.mode-tab.active{background:var(--night-3);color:var(--text);font-weight:600}
-
-.exact-input{display:flex;gap:8px;align-items:center}
-.exact-input input{flex:1;padding:14px;border:1px solid var(--border);border-radius:var(--r);background:var(--night-2);font-family:system-ui,sans-serif;font-size:15px;color:var(--text);outline:none;transition:border-color .2s;color-scheme:dark}
-.exact-input input:focus{border-color:var(--accent)}
-
-.quick-picks{display:flex;flex-wrap:wrap;gap:8px}
-.quick-pick{background:var(--night-2);border:1px solid var(--border);border-radius:100px;padding:8px 14px;font-size:12px;font-family:system-ui,sans-serif;color:var(--text-m);cursor:pointer;transition:background .2s,color .2s,border-color .2s}
-.quick-pick:hover{background:var(--night-3);color:var(--text)}
-.quick-pick.active{background:var(--accent);color:var(--night);border-color:var(--accent)}
-
-.resolved-preview{background:var(--night-2);border:1px solid var(--border);border-radius:var(--r);padding:16px;font-family:system-ui,sans-serif}
-.resolved-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--text-f);margin-bottom:6px}
-.resolved-date{font-size:17px;color:var(--accent);font-weight:600}
-.resolved-relative{font-size:13px;color:var(--text-m);margin-top:4px}
-
-.btn-primary{width:100%;padding:16px;background:var(--accent);color:#ffffff;border:none;border-radius:var(--r);font-family:system-ui,sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:background .2s,transform .1s,opacity .2s}
-.btn-primary:hover:not(:disabled){background:#17935f}
-.btn-primary:active:not(:disabled){transform:scale(.98)}
-.btn-primary:disabled{opacity:.4;cursor:not-allowed}
-
-/* ── Map toggle (top-right of main screen) ── */
-.map-toggle{
-  position:absolute;top:16px;right:16px;z-index:500;
-  display:flex;background:rgba(255,255,255,.78);
-  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-  border:1px solid var(--border);border-radius:100px;padding:3px;
-  font-family:system-ui,sans-serif;
-}
-.map-toggle button{
-  background:none;border:none;color:var(--text-m);
-  padding:7px 14px;border-radius:100px;cursor:pointer;
-  font-family:system-ui,sans-serif;font-size:12px;
-  transition:background .2s,color .2s;
-}
-.map-toggle button.active{background:var(--accent);color:#ffffff;font-weight:600}
-
-/* ── Settings button (top-left of main screen) ── */
-.settings-btn{
-  position:absolute;left:16px;top:16px;z-index:500;
-  width:36px;height:36px;border-radius:50%;
-  background:rgba(255,255,255,.78);
-  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-  border:1px solid var(--border);
-  color:var(--text-m);cursor:pointer;
-  display:flex;align-items:center;justify-content:center;
-  transition:color .2s,background .2s;
-}
-.settings-btn:hover{background:rgba(29,176,117,.12);color:var(--text)}
-
-/* ── List button (top-left, next to settings) ── */
-.list-btn{
-  position:absolute;left:62px;top:16px;z-index:500;
-  width:36px;height:36px;border-radius:50%;
-  background:rgba(255,255,255,.78);
-  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-  border:1px solid var(--border);
-  color:var(--text-m);cursor:pointer;
-  display:flex;align-items:center;justify-content:center;
-  transition:color .2s,background .2s;
-}
-.list-btn:hover{background:rgba(29,176,117,.12);color:var(--text)}
-
-/* ── Modal (consent + info + reflect + view + list) ── */
-.modal-backdrop{
-  position:fixed;inset:0;background:rgba(0,0,0,.35);
-  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-  z-index:1000;display:none;align-items:center;justify-content:center;padding:20px;
-}
-.modal-backdrop.active{display:flex}
-.modal{
-  background:var(--night-2);border:1px solid var(--border);
-  border-radius:20px;padding:28px;max-width:520px;width:100%;
-  font-family:system-ui,sans-serif;color:var(--text);
-  max-height:90vh;overflow-y:auto;
-}
-.modal h2{font-family:Georgia,serif;font-size:22px;font-weight:700;letter-spacing:-.4px;margin-bottom:14px;color:var(--text)}
-
-.modal-label{
-  display:inline-block;background:var(--night-3);border:1px solid var(--border);
-  border-radius:100px;padding:5px 14px;margin-bottom:14px;
-  font-family:system-ui,sans-serif;font-size:13px;color:var(--text);
-  max-width:100%;overflow-wrap:break-word;
-}
-.modal-section{margin-bottom:24px;font-size:14px;line-height:1.65;color:var(--text-m)}
-.modal-section:last-of-type{margin-bottom:0}
-.modal-section h3{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-f);margin-bottom:10px}
-.modal-info-placeholder{
-  background:var(--night-3);border:1px dashed var(--border);
-  border-radius:var(--r);padding:14px;color:var(--text-f);font-style:italic;font-size:13px;
-}
-.consent-row{
-  display:flex;gap:12px;align-items:flex-start;
-  padding:14px;background:var(--night-3);border:1px solid var(--border);
-  border-radius:var(--r);cursor:pointer;
-}
-.consent-row input[type="checkbox"]{
-  width:20px;height:20px;flex-shrink:0;cursor:pointer;margin-top:1px;
-  accent-color:var(--accent);
-}
-.consent-row label{cursor:pointer;font-size:14px;color:var(--text);line-height:1.55}
-.consent-row label .small{display:block;color:var(--text-m);font-size:12px;margin-top:4px}
-.modal-actions{display:flex;gap:10px;margin-top:24px}
-.modal-actions button{flex:1}
-.btn-secondary{
-  padding:14px;background:transparent;color:var(--text-m);
-  border:1px solid var(--border);border-radius:var(--r);
-  font-family:system-ui,sans-serif;font-size:14px;cursor:pointer;
-  transition:background .2s,color .2s;
-}
-.btn-secondary:hover{background:var(--night-3);color:var(--text)}
-
-/* ── Reflection options ── */
-.reflect-options{display:flex;flex-direction:column;gap:10px}
-.reflect-option{
-  display:flex;align-items:center;gap:14px;
-  padding:14px 16px;background:var(--night-3);border:1px solid var(--border);
-  border-radius:var(--r);color:var(--text);font-family:system-ui,sans-serif;font-size:15px;
-  cursor:pointer;text-align:left;transition:background .2s,border-color .2s,transform .1s;
-}
-.reflect-option:hover{background:var(--night-3);border-color:rgba(0,0,0,.18)}
-.reflect-option:active{transform:scale(.98)}
-.reflect-option.selected{background:var(--night-3);border-color:var(--accent)}
-.reflect-swatch{
-  width:22px;height:22px;border-radius:50%;flex-shrink:0;
-  box-shadow:0 0 0 1px rgba(255,255,255,.15) inset;
-}
-
-.reflect-note{margin-top:18px;display:flex;flex-direction:column;gap:8px}
-.reflect-note-label{font-size:12px;color:var(--text-m);font-family:system-ui,sans-serif}
-.reflect-note-optional{color:var(--text-f);font-style:italic}
-#reflect-text{
-  width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:var(--r);
-  background:var(--night-3);color:var(--text);
-  font-family:Georgia,serif;font-size:14px;line-height:1.55;
-  resize:vertical;min-height:80px;outline:none;
-  transition:border-color .2s;
-}
-#reflect-text:focus{border-color:var(--accent)}
-#reflect-text::placeholder{color:var(--text-f);font-style:italic}
-
-/* ── Future-self banner on screen-future ── */
-.future-banner{
-  display:flex;flex-direction:column;align-items:center;gap:4px;
-  padding:18px 20px;margin:6px 0 22px;
-  background:linear-gradient(180deg, rgba(101,113,170,0.10), rgba(101,113,170,0.04));
-  border:1px solid rgba(101,113,170,0.22);
-  border-radius:var(--r);
-  text-align:center;
-}
-.future-banner-label{
-  font-size:11px;color:var(--text-f);text-transform:uppercase;letter-spacing:1.2px;
-  font-family:system-ui,sans-serif;
-}
-.future-banner-date{
-  font-family:Georgia,serif;font-size:20px;color:var(--text);font-weight:600;
-  letter-spacing:-.2px;
-}
-
-/* prior-text mirrors reflect-text styling */
-#prior-text{
-  width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:var(--r);
-  background:var(--night-3);color:var(--text);
-  font-family:Georgia,serif;font-size:14px;line-height:1.55;
-  resize:vertical;min-height:100px;outline:none;
-  transition:border-color .2s;margin-top:8px;
-}
-#prior-text:focus{border-color:var(--accent)}
-#prior-text::placeholder{color:var(--text-f);font-style:italic}
-
-/* The "prior reflection summary" shown at the top of the reflect modal */
-.prior-recap{
-  margin:8px 0 18px;
-  padding:14px;background:var(--night-3);
-  border:1px solid var(--border);border-radius:var(--r);
-  display:flex;flex-direction:column;gap:10px;
-}
-.prior-recap-header{
-  display:flex;align-items:center;gap:10px;
-  font-family:system-ui,sans-serif;font-size:12px;
-  color:var(--text-m);text-transform:uppercase;letter-spacing:.6px;
-}
-.prior-recap-swatch{
-  width:14px;height:14px;border-radius:50%;
-  box-shadow:0 0 0 1px rgba(255,255,255,.15) inset;
-}
-.prior-recap-text{
-  font-family:Georgia,serif;font-size:13.5px;line-height:1.55;
-  color:var(--text);white-space:pre-wrap;
-}
-
-/* View modal: two coloured sections for prior + reflection */
-.view-section{
-  margin-top:14px;padding:16px;border-radius:var(--r);
-  border:1px solid var(--border);
-  display:flex;flex-direction:column;gap:8px;
-}
-.view-section-title{
-  font-family:system-ui,sans-serif;font-size:11px;
-  color:var(--text);text-transform:uppercase;letter-spacing:1px;
-  display:flex;align-items:center;gap:10px;
-}
-.view-section-text{
-  font-family:Georgia,serif;font-size:14px;line-height:1.6;
-  color:var(--text);white-space:pre-wrap;
-}
-.view-section-empty{
-  font-family:system-ui,sans-serif;font-size:13px;color:var(--text-f);
-  font-style:italic;
-}
-
-/* ── List modal ── */
-.modal-list{max-width:560px}
-.list-sections{display:flex;flex-direction:column;gap:22px}
-.list-section-title{
-  font-family:system-ui,sans-serif;font-size:11px;font-weight:600;
-  text-transform:uppercase;letter-spacing:.9px;color:var(--text-f);
-  margin-bottom:10px;
-}
-.list-section-empty{
-  font-family:system-ui,sans-serif;font-size:13px;color:var(--text-f);
-  font-style:italic;padding:8px 0;
-}
-.list-items{display:flex;flex-direction:column;gap:10px}
-.list-item{
-  display:flex;align-items:flex-start;gap:14px;
-  padding:14px 16px;background:var(--night-2);
-  border:1px solid var(--border);border-radius:var(--r);
-  cursor:pointer;transition:background .2s,border-color .2s;
-  text-align:left;
-}
-.list-item:hover{background:var(--night-3);border-color:rgba(0,0,0,.18)}
-.list-item-mark{
-  width:32px;height:32px;border-radius:50%;flex-shrink:0;margin-top:2px;
-  box-shadow:0 0 0 1px rgba(0,0,0,.08) inset;
-}
-.list-item-body{flex:1;min-width:0}
-.list-item-title{
-  font-family:Georgia,serif;font-size:15px;color:var(--text);
-  margin-bottom:2px;overflow-wrap:break-word;
-}
-.list-item-meta{
-  font-family:system-ui,sans-serif;font-size:12px;color:var(--text-m);
-  margin-bottom:6px;
-}
-.list-item-chevron{
-  width:16px;height:16px;flex-shrink:0;margin-top:6px;color:var(--text-f);
-  transition:transform .2s;
-}
-.list-item.expanded .list-item-chevron{transform:rotate(90deg)}
-.list-item-detail{
-  margin-top:10px;padding-top:10px;border-top:1px solid var(--border);
-  display:none;flex-direction:column;gap:10px;
-}
-.list-item.expanded .list-item-detail{display:flex}
-.list-detail-block{display:flex;flex-direction:column;gap:4px}
-.list-detail-label{
-  font-family:system-ui,sans-serif;font-size:10px;font-weight:600;
-  text-transform:uppercase;letter-spacing:.8px;color:var(--text-f);
-  display:flex;align-items:center;gap:8px;
-}
-.list-detail-swatch{
-  width:10px;height:10px;border-radius:50%;
-  box-shadow:0 0 0 1px rgba(0,0,0,.08) inset;
-}
-.list-detail-prompt{
-  font-family:system-ui,sans-serif;font-size:12px;font-style:italic;
-  color:var(--text-m);line-height:1.5;
-}
-.list-detail-text{
-  font-family:Georgia,serif;font-size:13.5px;line-height:1.55;
-  color:var(--text);white-space:pre-wrap;
-}
-.list-item-action{
-  margin-top:10px;padding:10px 14px;background:var(--accent);color:#ffffff;
-  border:none;border-radius:var(--r-sm);
-  font-family:system-ui,sans-serif;font-size:13px;font-weight:600;
-  cursor:pointer;transition:background .2s;align-self:flex-start;
-}
-.list-item-action:hover{background:#17935f}
-
-/* Mark thumbnail inside the view modal */
-.view-mark-thumb{
-  width:56px;height:56px;border-radius:50%;margin:6px auto 14px;
-  box-shadow:0 0 0 1px rgba(0,0,0,.08) inset;
-}
-
-/* ── Read-only view of a reflected mark ── */
-.view-reflection{
-  display:flex;align-items:center;gap:14px;
-  padding:14px 16px;background:var(--night-3);border:1px solid var(--border);
-  border-radius:var(--r);
-}
-.view-swatch{
-  width:26px;height:26px;border-radius:50%;flex-shrink:0;
-  box-shadow:0 0 0 1px rgba(255,255,255,.15) inset;
-}
-.view-label{
-  color:var(--text);font-family:system-ui,sans-serif;font-size:15px;font-weight:500;
-}
-.view-note{margin-top:16px}
-.view-note-label{
-  font-size:11px;color:var(--text-f);text-transform:uppercase;letter-spacing:.8px;
-  margin-bottom:8px;font-family:system-ui,sans-serif;
-}
-.view-note-text{
-  background:var(--night-3);border:1px solid var(--border);
-  border-radius:var(--r);padding:14px 16px;
-  font-family:Georgia,serif;font-size:14px;line-height:1.6;
-  color:var(--text);white-space:pre-wrap;word-wrap:break-word;
-}
-
-/* ── Extend options (used in the "still going" picker) ── */
-.extend-options{display:flex;flex-direction:column;gap:8px}
-.extend-option{
-  padding:13px 16px;background:var(--night-3);border:1px solid var(--border);
-  border-radius:var(--r);color:var(--text);font-family:system-ui,sans-serif;font-size:15px;
-  cursor:pointer;text-align:left;transition:background .2s,border-color .2s;
-}
-.extend-option:hover{background:var(--night-3);border-color:rgba(0,0,0,.18)}
-
-/* "This isn't over yet" — a quieter link-style button inside the reflect modal */
-.btn-quiet{
-  background:none;border:none;color:var(--text-m);
-  font-family:system-ui,sans-serif;font-size:13px;text-decoration:underline;
-  cursor:pointer;padding:8px 0;align-self:flex-start;
-  transition:color .2s;
-}
-.btn-quiet:hover{color:var(--text)}
-
-/* ── TOAST ── */
-.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(16px);background:var(--night-3);color:var(--text);border:1px solid var(--border);border-radius:100px;padding:11px 20px;font-size:13px;font-weight:500;opacity:0;transition:opacity .3s,transform .3s;z-index:9999;pointer-events:none;white-space:nowrap;font-family:system-ui,sans-serif}
-.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  /* Exhibition marker */
+  .exhibit-pin {
+    width: 18px; height: 18px;
+    background: #f0c060;
+    border: 3px solid white;
+    border-radius: 50%;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
 </style>
 </head>
 <body>
+<header>
+  <h1>Emotional Weather — Vienna</h1>
+  <div class="sub">Paint your local weather: light, calm, heavy, or turbulent. It drifts with the real wind.</div>
+</header>
 
-<!-- ── MAIN 3D ── -->
-<div id="screen-main" class="screen active">
-  <canvas id="three-canvas"></canvas>
-  <button class="settings-btn" id="settings-btn" title="Settings">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-  </button>
-  <button class="list-btn" id="list-btn" title="View all entries">
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-  </button>
-  <div class="map-toggle">
-    <button id="map-mine" class="active">My map</button>
-    <button id="map-shared">Shared map</button>
+<div id="map"></div>
+
+<div class="legend" id="legend">
+  <div style="text-align:center; font-weight:500; margin-bottom: 4px; color: #2a2a2d">qualities</div>
+  <canvas id="legend-canvas" width="60" height="60" style="display:block; image-rendering: auto; border-radius: 4px;"></canvas>
+  <div style="display:flex; justify-content:space-between; font-size:9px; color: #555; width:60px; margin-top:2px">
+    <span>turb.</span><span>light</span>
   </div>
-  <div class="bottom-bar">
-    <button class="btn-log" id="btn-log">Log an expectation</button>
+  <div style="display:flex; justify-content:space-between; font-size:9px; color: #555; width:60px">
+    <span>heavy</span><span>calm</span>
   </div>
 </div>
 
-<!-- ── LOG SCREEN: STEP 1 (place + label + time) ── -->
-<div id="screen-log" class="screen">
-  <div class="log-wrap">
-    <button class="btn-back" id="btn-back">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-      Back
-    </button>
-    <h1>Anchor a moment you're anticipating</h1>
-    <p class="intro">Something is coming. Maybe you're dreading it, maybe you're looking forward to it — either way, your mind is reaching toward it. Mark when you'll be on the other side of it.</p>
-
-    <div class="section">
-      <span class="section-label">Place</span>
-      <div class="location-status" id="location-status">Locating you…</div>
+<div class="controls">
+  <div class="row">
+    <button id="btn-log" class="primary">＋ Log how I feel</button>
+    <button id="btn-locate">📍 Use my location</button>
+    <div class="status" id="status">Click a spot on the map, or use your GPS.</div>
+  </div>
+  <div class="row">
+    <div class="status">
+      Exhibition site: <span id="exhibit-coords"></span> ·
+      Local reading: <span id="local-reading">—</span> ·
+      Wind: <span id="wind-status">default (set OWM_API_KEY for live)</span> ·
+      <a href="https://openweathermap.org" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline">weather data: OpenWeather</a>
     </div>
+  </div>
+</div>
 
-    <div class="section">
-      <span class="section-label">A word or two for your future self</span>
-      <p class="section-help">Just enough to recognise this later — a label only you will see.</p>
-      <input type="text" id="label-input" class="label-input" maxlength="80" placeholder="What is this about?"/>
-    </div>
+<div class="modal-backdrop" id="modal">
+  <div class="modal modal-paint">
+    <h2>Paint how you feel</h2>
+    <div class="help">Pick a colour from the square, paint your area. Each corner is a quality.</div>
 
-    <div class="section">
-      <span class="section-label">When will you be on the other side of it?</span>
-      <p class="section-help">A rough sense is fine. Pick the moment you imagine yourself looking back from.</p>
-
-      <div class="mode-tabs">
-        <button class="mode-tab active" data-mode="quick">Quick pick</button>
-        <button class="mode-tab" data-mode="custom">Custom duration</button>
-        <button class="mode-tab" data-mode="exact">Exact date</button>
-      </div>
-
-      <div class="mode-panel" data-panel="quick">
-        <div class="quick-picks" id="quick-picks">
-          <button class="quick-pick" data-amount="1" data-unit="hours">1 hour</button>
-          <button class="quick-pick" data-amount="1" data-unit="days">tomorrow</button>
-          <button class="quick-pick" data-amount="1" data-unit="weeks">next week</button>
-          <button class="quick-pick" data-amount="1" data-unit="months">next month</button>
-          <button class="quick-pick" data-amount="6" data-unit="months">in 6 months</button>
-          <button class="quick-pick" data-amount="1" data-unit="years">in a year</button>
-          <button class="quick-pick" data-amount="5" data-unit="years">in 5 years</button>
+    <div class="paint-row">
+      <!-- Colour picker: 4-corner square with a draggable selector -->
+      <div class="picker-block">
+        <div class="picker-labels">
+          <span class="lbl-tl">turbulent</span>
+          <span class="lbl-tr">light</span>
+          <span class="lbl-bl">heavy</span>
+          <span class="lbl-br">calm</span>
         </div>
-      </div>
-
-      <div class="mode-panel" data-panel="custom" style="display:none">
-        <div class="duration-input">
-          <input type="number" id="duration-amount" min="1" placeholder="amount"/>
-          <select id="duration-unit">
-            <option value="minutes">minutes</option>
-            <option value="hours">hours</option>
-            <option value="days" selected>days</option>
-            <option value="weeks">weeks</option>
-            <option value="months">months</option>
-            <option value="years">years</option>
-          </select>
+        <div class="picker" id="picker">
+          <canvas id="picker-canvas" width="160" height="160"></canvas>
+          <div class="picker-pin" id="picker-pin"></div>
         </div>
+        <div class="picker-help">drag the pin to blend</div>
       </div>
 
-      <div class="mode-panel" data-panel="exact" style="display:none">
-        <div class="exact-input">
-          <input type="datetime-local" id="exact-datetime"/>
-        </div>
-      </div>
-
-      <div class="resolved-preview" id="resolved-preview" style="display:none">
-        <div class="resolved-label">You'll look back from</div>
-        <div class="resolved-date" id="resolved-date">—</div>
-        <div class="resolved-relative" id="resolved-relative">—</div>
-      </div>
-    </div>
-
-    <button class="btn-primary" id="btn-continue" disabled>Continue</button>
-  </div>
-</div>
-
-<!-- ── LOG SCREEN: STEP 2 (future-self / time-capsule) ── -->
-<div id="screen-future" class="screen">
-  <div class="log-wrap">
-    <button class="btn-back" id="btn-back-future">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-      Back
-    </button>
-    <div class="future-banner">
-      <span class="future-banner-label">Imagine it's</span>
-      <span class="future-banner-date" id="future-banner-date">—</span>
-    </div>
-    <h1>You're on the other side of it now.</h1>
-    <p class="intro">Step into your future self. The thing you logged a moment ago has come and gone. Speak as if it already happened — this is your time capsule, sent backward.</p>
-
-    <!-- Reconsider only: show the user's last answer so they can build on it. -->
-    <div class="prior-recap" id="future-prior-recap" style="display:none">
-      <div class="prior-recap-header">
-        <span class="prior-recap-swatch" id="future-prior-swatch"></span>
-        <span>Last time you wrote</span>
-      </div>
-      <div class="prior-recap-text" id="future-prior-text">—</div>
-    </div>
-
-    <div class="section" id="prior-prompt-section">
-      <span class="section-label" id="prior-prompt-label">Future self, looking back</span>
-      <p class="section-help" id="prior-prompt-text">—</p>
-      <textarea id="prior-text" rows="5" placeholder="Write as if it has already happened…"></textarea>
-    </div>
-
-    <button class="btn-primary" id="btn-to-present" disabled>Continue</button>
-  </div>
-</div>
-
-<!-- ── SCREEN: BACK IN THE PRESENT (colour pick) ── -->
-<div id="screen-present" class="screen">
-  <div class="log-wrap">
-    <button class="btn-back" id="btn-back-present">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-      Back
-    </button>
-    <h1>Back in the present.</h1>
-    <p class="intro">Now, with the future-self in mind — what's your honest expectation, here and now?</p>
-
-    <div class="section">
-      <span class="section-label">How do you feel about the time ahead?</span>
-      <div class="reflect-options" id="present-options">
-        <button class="reflect-option" data-value="better">
-          <span class="reflect-swatch" style="background:#1db075"></span>
-          <span>I'm hopeful — I think this will go well</span>
-        </button>
-        <button class="reflect-option" data-value="same">
-          <span class="reflect-swatch" style="background:#e6d944"></span>
-          <span>I'm unsure — it could go either way</span>
-        </button>
-        <button class="reflect-option" data-value="worse">
-          <span class="reflect-swatch" style="background:#6854da"></span>
-          <span>I'm worried — I think this will be hard</span>
-        </button>
-      </div>
-    </div>
-
-    <button class="btn-primary" id="btn-save" disabled>Leave this here</button>
-  </div>
-</div>
-
-<!-- ── Modal: consent + about ── -->
-<div class="modal-backdrop" id="modal-backdrop">
-  <div class="modal">
-    <h2 id="modal-title">Welcome to Anchor</h2>
-
-    <div class="modal-section">
-      <h3>About this project</h3>
-      <div class="modal-info-placeholder">
-        Project information will go here. Brief explanation of what Anchor is,
-        why it exists, and how it works.
-      </div>
-    </div>
-
-    <div class="modal-section">
-      <h3>Sharing</h3>
-      <p style="margin-bottom:12px">Your entries are saved on your device by default. If you choose to share,
-        they're added to a collective map where everyone can see them. No names, no exact
-        locations, no times — just rough places and durations.</p>
-      <div class="consent-row" id="consent-row">
-        <input type="checkbox" id="consent-checkbox"/>
-        <label for="consent-checkbox">
-          Share my entries anonymously
-          <span class="small">Coordinates rounded to ~100m, time truncated to the hour, no identifier stored.</span>
+      <!-- Brush + erase tools -->
+      <div class="tool-block">
+        <button class="tool-btn active" id="tool-brush" data-tool="brush">Brush</button>
+        <button class="tool-btn" id="tool-erase" data-tool="erase">Eraser</button>
+        <label class="size-label">size
+          <input type="range" id="brush-size" min="6" max="50" value="22">
         </label>
+        <button class="tool-btn small" id="tool-clear">Clear</button>
       </div>
     </div>
 
-    <div class="modal-actions">
-      <button class="btn-secondary" id="modal-cancel" style="display:none">Cancel</button>
-      <button class="btn-primary" id="modal-confirm">Continue</button>
+    <!-- Painting canvas. Represents a fixed area around the user's GPS pin. -->
+    <div class="paint-area">
+      <canvas id="paint-canvas" width="320" height="320"></canvas>
+      <div class="paint-pin">●</div>
+    </div>
+    <div class="paint-area-help">painting in a ~500 m area around your pin</div>
+
+    <div class="modal-buttons">
+      <button id="btn-cancel">Cancel</button>
+      <button id="btn-save" class="primary">Save reading</button>
     </div>
   </div>
 </div>
 
-<div class="modal-backdrop" id="reflect-backdrop">
-  <div class="modal">
-    <h2>Looking back, for real this time</h2>
-    <div class="modal-label" id="reflect-label" style="display:none"></div>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  // Fallback: if jsdelivr didn't load Leaflet, try unpkg.
+  if (typeof L === 'undefined') {
+    document.write('<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>');
+  }
+</script>
+<script>
+  // Final check: if Leaflet really couldn't load, show a clear error.
+  if (typeof L === 'undefined') {
+    document.body.innerHTML =
+      '<div style="padding:40px;font-family:system-ui;color:#fff;background:#1a1a1d;height:100vh">' +
+      '<h2>Couldn\'t load Leaflet</h2>' +
+      '<p>The map library failed to load from both CDNs. Check your internet connection and try again. ' +
+      'If you\'re running this locally without internet, you\'ll need to host Leaflet alongside the file.</p>' +
+      '</div>';
+    throw new Error('Leaflet failed to load');
+  }
+</script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   CONFIG
+   ═══════════════════════════════════════════════════════════════════════ */
+const VIENNA_CENTER = { lat: 48.2082, lng: 16.3738 };
+const EXHIBITION    = { lat: 48.2082, lng: 16.3738 };   // set this to the actual venue
+const HALF_LAT = 0.20;    // ±0.20° lat
+const HALF_LNG = 0.30;    // ±0.30° lng
+const GRID_SIZE = 256;    // 256x256 cells over the bounding box (~170m/cell)
+const TICK_MS   = 5000;   // simulation tick every 5s
+// Wind: when OWM_API_KEY is set below, the app fetches real Vienna wind
+// every 10 minutes and drives the advection direction/speed from it. The
+// fallback (when no key, or OWM is unreachable) is a slow west→east drift.
+let   WIND_DIR  = { dx: 1, dy: 0 };
+let   WIND_STRENGTH = 0.64;  // cells/tick fallback; OWM overwrites
 
-    <!-- Recap of the time capsule the user sent forward when logging this -->
-    <div class="prior-recap" id="reflect-prior-recap" style="display:none">
-      <div class="prior-recap-header">
-        <span class="prior-recap-swatch" id="reflect-prior-swatch"></span>
-        <span>What you imagined back then</span>
-      </div>
-      <div class="prior-recap-text" id="reflect-prior-text">—</div>
-    </div>
+/* OpenWeatherMap — set this to enable real Vienna wind.
+   Free signup at https://openweathermap.org/api. */
+const OWM_API_KEY = '';
+const DIFFUSION = 0.015;   // very slight smoothing per tick — preserves crisp painted shapes
+const DECAY     = 0.0008;  // values fade slowly; painted weather lingers for many minutes
 
-    <p style="font-size:14px;color:var(--text-m);line-height:1.6;margin-bottom:6px">Now that you're on the other side — was your future-self right? What did you find that surprised you?</p>
-    <p style="font-size:13px;color:var(--text-f);line-height:1.6;margin-bottom:18px;font-style:italic">There's no right answer. The point is honest reflection.</p>
-
-    <div class="reflect-options" id="reflect-options">
-      <button class="reflect-option" data-value="better">
-        <span class="reflect-swatch" style="background:#1db075"></span>
-        <span>Better than I expected</span>
-      </button>
-      <button class="reflect-option" data-value="same">
-        <span class="reflect-swatch" style="background:#e6d944"></span>
-        <span>About what I expected</span>
-      </button>
-      <button class="reflect-option" data-value="worse">
-        <span class="reflect-swatch" style="background:#6854da"></span>
-        <span>Worse than I expected</span>
-      </button>
-    </div>
-
-    <div class="reflect-note">
-      <label for="reflect-text" class="reflect-note-label">What did you learn? How was your future-self's guess?</label>
-      <textarea id="reflect-text" rows="4" placeholder="A note to yourself, anchored here…"></textarea>
-    </div>
-
-    <button class="btn-quiet" id="reflect-not-over" style="margin-top:14px">This isn't over yet — give it more time</button>
-
-    <div class="modal-actions" style="margin-top:10px">
-      <button class="btn-secondary" id="reflect-skip">Skip for now</button>
-      <button class="btn-primary" id="reflect-save" disabled>Leave it here</button>
-    </div>
-  </div>
-</div>
-
-<!-- Read-only view of an already-reflected mark. Tapping Edit transitions
-     to the regular reflect modal (pre-filled). -->
-<div class="modal-backdrop" id="view-backdrop">
-  <div class="modal">
-    <h2>A moment you left here</h2>
-    <div id="view-mark-thumb" class="view-mark-thumb"></div>
-    <div class="modal-label" id="view-anxiety-label" style="display:none"></div>
-    <p style="font-size:13px;color:var(--text-m);line-height:1.6;margin-bottom:6px">Here's the time capsule you sent forward, and the one you opened on the other side.</p>
-
-    <div class="view-section" id="view-section-prior">
-      <div class="view-section-title">
-        <span class="prior-recap-swatch" id="view-prior-swatch"></span>
-        <span>What I imagined</span>
-      </div>
-      <p class="view-section-text" id="view-prior-text"></p>
-    </div>
-
-    <div class="view-section" id="view-section-reflection">
-      <div class="view-section-title">
-        <span class="prior-recap-swatch" id="view-reflection-swatch"></span>
-        <span>What I found</span>
-      </div>
-      <p class="view-section-text" id="view-reflection-text"></p>
-    </div>
-
-    <div class="modal-actions" style="margin-top:18px">
-      <button class="btn-secondary" id="view-close">Close</button>
-      <button class="btn-primary" id="view-edit">Edit</button>
-    </div>
-  </div>
-</div>
-
-<!-- Tap on an active column: ask whether the event has passed already.
-     If yes, set resolvedAt = now and open the reflection modal. -->
-<div class="modal-backdrop" id="early-backdrop">
-  <div class="modal">
-    <h2>What about this entry?</h2>
-    <div class="modal-label" id="early-label" style="display:none"></div>
-    <p style="font-size:14px;color:var(--text-m);line-height:1.6;margin-bottom:18px">You can pick this up in a few different ways:</p>
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <button class="reflect-option" id="early-reconsider" style="width:100%">
-        <span>Reconsider — I want to do the time-capsule again</span>
-      </button>
-      <button class="reflect-option" id="early-confirm" style="width:100%">
-        <span>I'm already past it — let me reflect</span>
-      </button>
-    </div>
-    <div class="modal-actions" style="margin-top:14px">
-      <button class="btn-secondary" id="early-cancel">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- Extend an anxiety: opened from "This isn't over yet" in the reflect modal. -->
-<div class="modal-backdrop" id="extend-backdrop">
-  <div class="modal">
-    <h2>How much longer?</h2>
-    <p style="font-size:14px;color:var(--text-m);line-height:1.6;margin-bottom:18px">Push the resolution further. The column will rise again until you reach the new horizon.</p>
-    <div class="extend-options" id="extend-options">
-      <button class="extend-option" data-amount="1" data-unit="hours">Another hour</button>
-      <button class="extend-option" data-amount="1" data-unit="days">Another day</button>
-      <button class="extend-option" data-amount="1" data-unit="weeks">Another week</button>
-      <button class="extend-option" data-amount="1" data-unit="months">Another month</button>
-    </div>
-    <div class="modal-actions" style="margin-top:14px">
-      <button class="btn-secondary" id="extend-cancel">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── List modal: overview of every logged anxiety ── -->
-<div class="modal-backdrop" id="list-backdrop">
-  <div class="modal modal-list">
-    <h2>Everything you've logged</h2>
-    <p style="font-size:13px;color:var(--text-m);line-height:1.6;margin-bottom:18px">Your time capsules — those still ahead, those waiting for reflection, and those you've looked back on.</p>
-    <div class="list-sections" id="list-sections">
-      <!-- populated dynamically -->
-    </div>
-    <div class="modal-actions" style="margin-top:18px">
-      <button class="btn-secondary" id="list-close">Close</button>
-    </div>
-  </div>
-</div>
-
-<div class="toast" id="toast"></div>
-
-<script type="module">
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-
-// ── Supabase config ────────────────────────────────────────────
-// Replace these two values with your project's URL and anon key.
-// They're safe to put in client-side code: Row Level Security
-// in the database controls what they can do.
-let SUPABASE_URL = 'https://jpgotzihotnifhldjqpa.supabase.co';          // e.g. https://xxxxx.supabase.co
+/* Supabase config — leave blank for localStorage-only prototype. */
+const SUPABASE_URL = 'https://jpgotzihotnifhldjqpa.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwZ290emlob3RuaWZobGRqcXBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMDY1NjAsImV4cCI6MjA5NDY4MjU2MH0.vTt4SPjE4op9plhlAhDjnwsB29ENeQHPf75w7cxLeYU';
 
-// Normalise the URL: trim whitespace and strip any trailing slash, so that
-// `${SUPABASE_URL}/rest/v1/...` never produces a double slash (which the
-// Supabase gateway misroutes into a CORS-less 404).
-SUPABASE_URL = SUPABASE_URL.trim().replace(/\/+$/, '');
+/* ═══════════════════════════════════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════════════════════════════════ */
+const state = {
+  // Two parallel fields. Each is a Float32Array of length GRID_SIZE*GRID_SIZE.
+  // valence  : -1 = unpleasant ("heavy", "turbulent"); +1 = pleasant ("calm", "light")
+  // arousal  : -1 = low-energy ("heavy", "calm");      +1 = high-energy ("turbulent", "light")
+  // Combined: the 4-corner colour picker is a barycentric mix of valence/arousal.
+  valence: null,
+  arousal: null,
+  entries: [],
+  userLatLng: null,
+  pendingLatLng: null,
+};
 
-// True when both config values are set to something real
-const SUPABASE_CONFIGURED =
-  SUPABASE_URL && !SUPABASE_URL.includes('YOUR_') &&
-  SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.includes('YOUR_');
-
-// ── Supabase REST helpers ──────────────────────────────────────
-// We make raw fetch calls to the auto-generated PostgREST API instead of
-// pulling in the @supabase/supabase-js library — saves a dependency.
-
-// Low-level POST of an already-built body. Throws on any failure (network
-// error OR non-2xx response) so callers can decide whether to queue it.
-async function postAnxietyBody(body) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/anxieties`, {
-    method: 'POST',
-    headers: {
-      'apikey': SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=minimal',
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Supabase insert failed: ${res.status} ${text}`);
-  }
+/* ═══════════════════════════════════════════════════════════════════════
+   GRID HELPERS — bounding-box lat/lng ↔ cell indices
+   ═══════════════════════════════════════════════════════════════════════ */
+function latLngToCell(lat, lng) {
+  const x = (lng - (VIENNA_CENTER.lng - HALF_LNG)) / (2 * HALF_LNG);
+  const y = (lat - (VIENNA_CENTER.lat - HALF_LAT)) / (2 * HALF_LAT);
+  return [
+    Math.max(0, Math.min(GRID_SIZE - 1, Math.floor(x * GRID_SIZE))),
+    Math.max(0, Math.min(GRID_SIZE - 1, Math.floor(y * GRID_SIZE))),
+  ];
+}
+function cellToLatLng(col, row) {
+  const lng = (VIENNA_CENTER.lng - HALF_LNG) + ((col + 0.5) / GRID_SIZE) * (2 * HALF_LNG);
+  const lat = (VIENNA_CENTER.lat - HALF_LAT) + ((row + 0.5) / GRID_SIZE) * (2 * HALF_LAT);
+  return [lat, lng];
+}
+// Channel-aware get/set. Pass the channel array.
+function getCell(channel, col, row) {
+  return channel[row * GRID_SIZE + col];
+}
+function setCell(channel, col, row, v) {
+  channel[row * GRID_SIZE + col] = v;
 }
 
-// Build the shareable body from raw fields. Rounds coordinates (defence in
-// depth — the server trigger also rounds). Text fields are never included.
-function buildShareBody(lat, lng, resolvedAt, extras) {
-  const body = {
-    lat: Math.round(lat * 1000) / 1000,
-    lng: Math.round(lng * 1000) / 1000,
-    resolved_at: new Date(resolvedAt).toISOString(),
-  };
-  if (extras && extras.priorExpectation) body.prior_expectation = extras.priorExpectation;
-  if (extras && extras.reflection) body.reflection = extras.reflection;
-  return body;
+/* ═══════════════════════════════════════════════════════════════════════
+   SIMULATION — diffusion + advection + decay (apply to BOTH channels)
+   ═══════════════════════════════════════════════════════════════════════ */
+function initField() {
+  state.valence = new Float32Array(GRID_SIZE * GRID_SIZE);
+  state.arousal = new Float32Array(GRID_SIZE * GRID_SIZE);
 }
 
-// ── Offline-resilient share queue ──
-// If an insert fails (offline, flaky network), the payload is stored in
-// localStorage and retried on next app load / when connectivity returns.
-const SHARE_QUEUE_KEY = 'anchor-share-queue';
+// Deposit a painted region. paintData is an ImageData-like array
+// of (valenceVal, arousalVal, weight, _) tuples for each pixel of the
+// 320×320 paint canvas. We map paint-canvas pixel positions to lat/lng
+// in a fixed-size area around (centerLat, centerLng), then back to grid
+// cells, accumulating weighted contributions per cell.
+const PAINT_AREA_KM = 0.25;    // 250 m radius (500 m diameter)
+const PAINT_CANVAS_SIZE = 320;
 
-function loadShareQueue() {
-  try { return JSON.parse(localStorage.getItem(SHARE_QUEUE_KEY) || '[]'); }
-  catch { return []; }
-}
-function saveShareQueue(q) {
-  try { localStorage.setItem(SHARE_QUEUE_KEY, JSON.stringify(q)); } catch {}
-}
-function enqueueShare(body) {
-  const q = loadShareQueue();
-  q.push(body);
-  saveShareQueue(q);
-}
+function depositPaintedRegion(centerLat, centerLng, paintStrokes) {
+  // paintStrokes is an array of {x, y, valence, arousal, size, erase}
+  // each "stroke point" deposits a Gaussian blob in grid space.
+  // We deposit at SUB-CELL precision (bilinear spread to the 4 nearest cells)
+  // so that paint inside a 500m area in a ~830m-cell grid still produces
+  // smooth-looking deposits rather than snapping to one cell.
 
-// Try to send everything in the queue, one at a time. Items that succeed are
-// removed; the first failure stops the flush (we'll retry the rest later).
-let flushingQueue = false;
-async function flushShareQueue() {
-  if (!SUPABASE_CONFIGURED || flushingQueue) return;
-  let q = loadShareQueue();
-  if (q.length === 0) return;
-  flushingQueue = true;
-  try {
-    while (q.length > 0) {
-      const body = q[0];
-      try {
-        await postAnxietyBody(body);
-        q.shift();                 // success — drop it
-        saveShareQueue(q);
-      } catch (err) {
-        // Still failing — leave the queue as-is and stop for now
-        console.warn('Share queue flush paused (will retry later):', err);
-        break;
+  const KM_PER_LAT = 111.0;
+  const KM_PER_LNG = 111.0 * Math.cos(centerLat * Math.PI / 180);
+  const PX_PER_KM = (PAINT_CANVAS_SIZE / 2) / PAINT_AREA_KM;
+
+  for (const s of paintStrokes) {
+    const dxKm = (s.x - PAINT_CANVAS_SIZE / 2) / PX_PER_KM;
+    const dyKm = (s.y - PAINT_CANVAS_SIZE / 2) / PX_PER_KM;
+    const lat = centerLat + (-dyKm) / KM_PER_LAT;
+    const lng = centerLng +   dxKm  / KM_PER_LNG;
+
+    // Sub-cell position in the grid (floating-point)
+    const fx = (lng - (VIENNA_CENTER.lng - HALF_LNG)) / (2 * HALF_LNG) * GRID_SIZE;
+    const fy = (lat - (VIENNA_CENTER.lat - HALF_LAT)) / (2 * HALF_LAT) * GRID_SIZE;
+
+    // Brush size in km, then in grid cells. NO artificial floor — we want
+    // a small drawn dot to deposit a small blob, and a large drawn region
+    // to deposit a large blob. Multiple stroke points stack via the loop.
+    const sizeKm = s.size / PX_PER_KM;
+    const sizeCells = sizeKm * GRID_SIZE / (2 * HALF_LAT * KM_PER_LAT);
+    const sigma = Math.max(0.05, sizeCells * 1.2);
+    const radius = Math.max(1, Math.ceil(sigma * 2.5));
+
+    // REPLACE-MODE deposit: each stroke point pulls the cell toward the
+    // stroke's colour (not adding to it). This means painting calm then
+    // heavy in the same spot results in "heavy" replacing "calm" there,
+    // and different colours in different spots remain spatially distinct —
+    // not muddied into an average.
+    //
+    // Mathematically: cell = lerp(cell, stroke_value, weight)
+    // where `weight` ramps with stroke intensity (overlap) so multiple
+    // passes at the same spot build up toward the stroke value.
+    const STROKE_WEIGHT = Math.min(0.6, 0.30 / Math.max(0.3, sigma));
+
+    const cx0 = Math.floor(fx), cy0 = Math.floor(fy);
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const x = cx0 + dx, y = cy0 + dy;
+        if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) continue;
+        // distance from sub-cell center (fx, fy) to this cell's center (x+0.5, y+0.5)
+        const ddx = (x + 0.5) - fx;
+        const ddy = (y + 0.5) - fy;
+        const r2 = ddx*ddx + ddy*ddy;
+        const gaussian = Math.exp(-r2 / (2 * sigma * sigma));
+        const w = Math.min(0.95, gaussian * STROKE_WEIGHT);
+        if (s.erase) {
+          // Eraser pulls both channels toward 0 by the weight
+          setCell(state.valence, x, y, getCell(state.valence, x, y) * (1 - w));
+          setCell(state.arousal, x, y, getCell(state.arousal, x, y) * (1 - w));
+        } else {
+          // Replace-mode: lerp cell toward stroke value
+          const curV = getCell(state.valence, x, y);
+          const curA = getCell(state.arousal, x, y);
+          setCell(state.valence, x, y, curV + (s.valence - curV) * w);
+          setCell(state.arousal, x, y, curA + (s.arousal - curA) * w);
+        }
       }
     }
-  } finally {
-    flushingQueue = false;
+  }
+  for (let i = 0; i < state.valence.length; i++) {
+    state.valence[i] = Math.max(-1.5, Math.min(1.5, state.valence[i]));
+    state.arousal[i] = Math.max(-1.5, Math.min(1.5, state.arousal[i]));
   }
 }
 
-async function supabaseInsertAnxiety(lat, lng, resolvedAt, extras) {
-  if (!SUPABASE_CONFIGURED) return;
-  const body = buildShareBody(lat, lng, resolvedAt, extras);
-  try {
-    await postAnxietyBody(body);
-    // On a successful insert, also try to drain anything that queued earlier.
-    flushShareQueue();
-  } catch (err) {
-    // Failed — stash it for a later retry instead of losing it.
-    console.warn('Insert failed, queuing for retry:', err);
-    enqueueShare(body);
-    throw err;   // let the caller know (it still proceeds with reload)
+// Generic diffusion — operates on the given channel array, returns a new one.
+// The diffusion rate per cell scales with the local arousal value: high-
+// arousal cells (turbulent / agitated) mix with their neighbours more than
+// low-arousal cells (calm / still). This gives a real behavioural difference
+// between calm and turbulent paint, visible over a couple of ticks.
+function diffuseChannel(channel, baseAmount) {
+  const next = new Float32Array(channel.length);
+  for (let y = 0; y < GRID_SIZE; y++) {
+    for (let x = 0; x < GRID_SIZE; x++) {
+      let sum = 0, n = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || nx >= GRID_SIZE || ny < 0 || ny >= GRID_SIZE) continue;
+          sum += channel[ny * GRID_SIZE + nx];
+          n++;
+        }
+      }
+      const avg = sum / n;
+      // Local diffusion rate: low for calm, high for turbulent
+      // arousal in [-1.5, 1.5]; normalise to [0, 1] roughly
+      const arousal = state.arousal[y * GRID_SIZE + x];
+      const arousalNorm = Math.max(0, Math.min(1, (arousal + 0.5) / 1.5));
+      // Scale baseAmount by 0.4× (very calm) up to 2.5× (very turbulent)
+      const localAmount = baseAmount * (0.4 + arousalNorm * 2.1);
+      const amt = Math.min(0.9, localAmount);
+      next[y * GRID_SIZE + x] = channel[y * GRID_SIZE + x] * (1 - amt) + avg * amt;
+    }
+  }
+  return next;
+}
+
+// Generic advection — back-trace by (dx, dy) cells, bilinear sample
+function advectChannel(channel, dx, dy) {
+  const next = new Float32Array(channel.length);
+  function sampleClamped(x, y) {
+    const xc = Math.max(0, Math.min(GRID_SIZE - 1, x));
+    const yc = Math.max(0, Math.min(GRID_SIZE - 1, y));
+    return channel[yc * GRID_SIZE + xc];
+  }
+  for (let y = 0; y < GRID_SIZE; y++) {
+    for (let x = 0; x < GRID_SIZE; x++) {
+      const sx = x - dx;
+      const sy = y - dy;
+      const x0 = Math.floor(sx), y0 = Math.floor(sy);
+      const fx = sx - x0, fy = sy - y0;
+      const c00 = sampleClamped(x0, y0);
+      const c10 = sampleClamped(x0 + 1, y0);
+      const c01 = sampleClamped(x0, y0 + 1);
+      const c11 = sampleClamped(x0 + 1, y0 + 1);
+      const top = c00 * (1 - fx) + c10 * fx;
+      const bot = c01 * (1 - fx) + c11 * fx;
+      next[y * GRID_SIZE + x] = top * (1 - fy) + bot * fy;
+    }
+  }
+  return next;
+}
+
+function decayChannel(channel, amount) {
+  for (let i = 0; i < channel.length; i++) {
+    channel[i] *= (1 - amount);
   }
 }
 
-async function supabaseFetchAnxieties() {
-  if (!SUPABASE_CONFIGURED) return [];
+function tick() {
+  // Diffuse, advect, decay both channels in parallel
+  state.valence = diffuseChannel(state.valence, DIFFUSION);
+  state.arousal = diffuseChannel(state.arousal, DIFFUSION);
+  state.valence = advectChannel(state.valence, WIND_DIR.dx * WIND_STRENGTH, WIND_DIR.dy * WIND_STRENGTH);
+  state.arousal = advectChannel(state.arousal, WIND_DIR.dx * WIND_STRENGTH, WIND_DIR.dy * WIND_STRENGTH);
+  decayChannel(state.valence, DECAY);
+  decayChannel(state.arousal, DECAY);
+  redrawField();
+  updateLocalReading();
+  if (SUPABASE_URL && SUPABASE_ANON_KEY) saveFieldToSupabase();
+  saveFieldLocal();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LIVE WEATHER — OpenWeatherMap (optional)
+   ═══════════════════════════════════════════════════════════════════════ */
+async function fetchLiveWind() {
+  if (!OWM_API_KEY) return;
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/anxieties?select=lat,lng,created_at,resolved_at,prior_expectation,reflection&order=created_at.desc&limit=2000`, {
+    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${VIENNA_CENTER.lat}&lon=${VIENNA_CENTER.lng}&appid=${OWM_API_KEY}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('OWM ' + r.status);
+    const d = await r.json();
+    // wind.deg is meteorological "direction wind is coming FROM" in degrees.
+    // Convert: dir wind GOES TO = from + 180.
+    const fromDeg = d.wind?.deg ?? 270;     // default to west if missing
+    const spdMs   = d.wind?.speed ?? 3;     // m/s
+    const goDeg = (fromDeg + 180) % 360;
+    const goRad = goDeg * Math.PI / 180;
+    // Convert meteorological angle (0=N, 90=E) to our grid (dx=east, dy=north).
+    // Wait: in our field y axis points NORTH (latitude), so:
+    //   dx =  sin(goRad)  (east-component)
+    //   dy =  cos(goRad)  (north-component)
+    WIND_DIR.dx = Math.sin(goRad);
+    WIND_DIR.dy = Math.cos(goRad);
+    // Speed-derived strength: ~0.06 cells/tick per m/s, capped.
+    // 1 m/s ≈ 3.6 km/h. With 0.06 cells/tick × 920m/cell ÷ 5s = ~11 m/min,
+    // very close to actual proportional drift. Capped to keep visualisation
+    // legible during storms.
+    WIND_STRENGTH = Math.max(0.27, Math.min(3.2, spdMs * 0.32));
+    updateWindStatus(`live · ${spdMs.toFixed(1)} m/s from ${describeDir(fromDeg)}`);
+  } catch (e) {
+    console.warn('OWM fetch failed', e);
+    updateWindStatus('default (OWM unavailable)');
+  }
+}
+function describeDir(deg) {
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  return dirs[Math.round(((deg % 360) / 45)) % 8];
+}
+function updateWindStatus(s) {
+  const el = document.getElementById('wind-status');
+  if (el) el.textContent = s;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PERSISTENCE — Supabase (if configured) + localStorage fallback
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function saveFieldLocal() {
+  localStorage.setItem('vw-valence', JSON.stringify(Array.from(state.valence)));
+  localStorage.setItem('vw-arousal', JSON.stringify(Array.from(state.arousal)));
+  localStorage.setItem('vw-field-time', Date.now().toString());
+}
+function loadFieldLocal() {
+  const rawV = localStorage.getItem('vw-valence');
+  const rawA = localStorage.getItem('vw-arousal');
+  if (!rawV || !rawA) return false;
+  try {
+    const v = JSON.parse(rawV);
+    const a = JSON.parse(rawA);
+    if (v.length === GRID_SIZE * GRID_SIZE && a.length === GRID_SIZE * GRID_SIZE) {
+      state.valence = new Float32Array(v);
+      state.arousal = new Float32Array(a);
+      return true;
+    }
+  } catch {}
+  return false;
+}
+async function saveEntrySupabase(lat, lng, valence, arousal) {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetch(`${SUPABASE_URL.replace(/\/+$/, '')}/rest/v1/entries`, {
+      method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'apikey': SUPABASE_ANON_KEY,
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Prefer': 'return=minimal',
       },
+      body: JSON.stringify({ lat, lng, valence, arousal }),
     });
-    if (!res.ok) {
-      console.warn('Supabase fetch failed:', res.status);
-      return [];
-    }
-    const data = await res.json();
-    return data.map((row, i) => ({
-      id: 'shared_' + i,
-      lat: parseFloat(row.lat),
-      lng: parseFloat(row.lng),
-      createdAt: new Date(row.created_at).getTime(),
-      resolvedAt: new Date(row.resolved_at).getTime(),
-      // The columns might not exist yet if the migration hasn't been run;
-      // fall back to null which renders as white.
-      priorExpectation: row.prior_expectation || null,
-      reflection: row.reflection || null,
-    }));
-  } catch (err) {
-    console.warn('Supabase fetch error:', err);
-    return [];
+    if (!r.ok) console.warn('Supabase entry save failed', r.status);
+  } catch (e) {
+    console.warn('Supabase entry save error', e);
   }
 }
-
-// ── State ──────────────────────────────────────────────────────
-// Each anxiety: {
-//   id, lat, lng, createdAt (ms), resolvedAt (ms)
-// }
-const S = {
-  // Personal anxieties (from localStorage) and shared anxieties (fetched from Supabase)
-  anxieties: [],          // these are the user's own — always saved locally
-  sharedAnxieties: [],    // pulled from Supabase, refreshed on mode change
-
-  // Which dataset the map currently visualises: 'mine' | 'shared'
-  mapMode: 'mine',
-
-  // Whether the user has agreed to share their anxieties to the collective map.
-  // Stored in localStorage as 'anchor-consent' = 'yes' | 'no'.
-  shareConsent: false,
-  hasOnboarded: false,    // true after first modal close
-
-  currentPos: null,
-  watchId: null,
-  // Time-scrub: simOffset is in milliseconds, ≤ 0.
-  // simNow = realNow + simOffset. At simOffset=0, we're viewing the present.
-  simOffset: 0,
-  // Log screen state
-  pendingPos: null,
-  selectedAmount: null,
-  selectedUnit: null,
-  selectedResolvedAt: null,
-  currentMode: 'quick',
-  // When non-null, the log-flow's save handler appends a new prior to this
-  // existing anxiety instead of creating a new one.
-  reconsiderAnxietyId: null,
-};
-
-// ── Settings persistence (consent + onboarding flag) ───────────
-function persistSettings() {
-  localStorage.setItem('anchor-settings', JSON.stringify({
-    shareConsent: S.shareConsent,
-    hasOnboarded: S.hasOnboarded,
-  }));
+// Encode field to a compact int8 array. Each value v ∈ [-1.5, 1.5] →
+// byte ∈ [0, 255]. Roughly 10x smaller payload than JSON floats.
+// Decode in UE5:  v = (byte / 255) * 3 - 1.5
+function quantiseField(channel) {
+  const out = new Array(channel.length);
+  for (let i = 0; i < channel.length; i++) {
+    const v = Math.max(-1.5, Math.min(1.5, channel[i]));
+    out[i] = Math.round((v + 1.5) / 3 * 255);
+  }
+  return out;
 }
-function hydrateSettings() {
+async function saveFieldToSupabase() {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return;
   try {
-    const d = JSON.parse(localStorage.getItem('anchor-settings') || '{}');
-    S.shareConsent = !!d.shareConsent;
-    S.hasOnboarded = !!d.hasOnboarded;
-  } catch {}
-}
-
-// ── Personal data persistence ──────────────────────────────────
-function persist() {
-  localStorage.setItem('anchor-v2', JSON.stringify({ anxieties: S.anxieties }));
-}
-function hydrate() {
-  try {
-    const d = JSON.parse(localStorage.getItem('anchor-v2')||'{}');
-    S.anxieties = d.anxieties || [];
-    // Migration: ensure each entry has priorExpectations[] and priorAnswers[]
-    // arrays. Older entries had only the singular priorExpectation/priorAnswer.
-    // We keep both: the array is the source of truth (used for multi-ring
-    // marks and history), and the singular field shadows the most-recent
-    // entry of the array (so existing read-paths keep working without changes).
-    for (const a of S.anxieties) {
-      if (!Array.isArray(a.priorExpectations)) {
-        a.priorExpectations = a.priorExpectation ? [a.priorExpectation] : [];
-      }
-      if (!Array.isArray(a.priorAnswers)) {
-        a.priorAnswers = a.priorAnswer ? [a.priorAnswer] : [];
-      }
-      // Sync the singular accessor to the latest entry
-      a.priorExpectation = a.priorExpectations[a.priorExpectations.length - 1] || null;
-      a.priorAnswer = a.priorAnswers[a.priorAnswers.length - 1] || null;
-    }
-  } catch {}
-}
-
-// ── Screens ────────────────────────────────────────────────────
-function show(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id===id));
-}
-
-// ── Time helpers ───────────────────────────────────────────────
-function nowMs() { return Date.now(); }
-
-function fmtDate(ms) {
-  const d = new Date(ms);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function fmtRelative(targetMs, fromMs = nowMs()) {
-  const diff = targetMs - fromMs;
-  const abs = Math.abs(diff);
-  const future = diff >= 0;
-  const sec = 1000, min = 60*sec, hr = 60*min, day = 24*hr, week = 7*day, month = 30*day, year = 365*day;
-
-  let n, unit;
-  if (abs < hr) { n = Math.max(1, Math.round(abs/min)); unit = n===1?'minute':'minutes'; }
-  else if (abs < day) { n = Math.round(abs/hr); unit = n===1?'hour':'hours'; }
-  else if (abs < week*2) { n = Math.round(abs/day); unit = n===1?'day':'days'; }
-  else if (abs < month*2) { n = Math.round(abs/week); unit = n===1?'week':'weeks'; }
-  else if (abs < year) { n = Math.round(abs/month); unit = n===1?'month':'months'; }
-  else { n = (abs/year).toFixed(1).replace(/\.0$/,''); unit = n==='1'?'year':'years'; }
-
-  return future ? `in ${n} ${unit}` : `${n} ${unit} ago`;
-}
-
-function addDuration(fromMs, amount, unit) {
-  const d = new Date(fromMs);
-  switch (unit) {
-    case 'minutes': d.setMinutes(d.getMinutes() + amount); break;
-    case 'hours': d.setHours(d.getHours() + amount); break;
-    case 'days': d.setDate(d.getDate() + amount); break;
-    case 'weeks': d.setDate(d.getDate() + amount * 7); break;
-    case 'months': d.setMonth(d.getMonth() + amount); break;
-    case 'years': d.setFullYear(d.getFullYear() + amount); break;
-  }
-  return d.getTime();
-}
-
-// ── Geo helpers ────────────────────────────────────────────────
-function fmtCoord(lat, lng) {
-  return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-}
-
-// ── Three.js scene ─────────────────────────────────────────────
-let renderer, scene, camera, controls, composer;
-let plane;                           // detail (close-up) deformable plane
-let farPlane;                        // wider, lower-detail background plane
-
-// World units:
-//   1 horizontal unit = ~3 metres of physical space (so a 1km area = ~333 units)
-//   1 vertical unit = 1 day of time
-const METRES_PER_UNIT_H = 0.6;
-const MS_PER_UNIT_V = 24 * 60 * 60 * 1000;
-
-// Build a flat annular ring geometry, meshed in polar coordinates.
-// The resulting BufferGeometry lives in the XZ plane (Y = 0 = flat),
-// with vertices arranged in `radialSegments+1` rings × `angularSegments`
-// columns. Each cell is two triangles.
-//
-// Why polar? It gives a clean inner boundary (a perfect circle) where the
-// hole is, no jagged squares poking into the detail plane.
-function buildAnnularPlaneGeometry(innerR, outerR, radialSegments, angularSegments) {
-  const positions = [];
-  const indices = [];
-
-  // Vertices laid out in (ring, column) order. ring goes 0..radialSegments,
-  // column goes 0..angularSegments-1.
-  for (let r = 0; r <= radialSegments; r++) {
-    const t = r / radialSegments;
-    const radius = innerR + (outerR - innerR) * t;
-    for (let c = 0; c < angularSegments; c++) {
-      const a = (c / angularSegments) * Math.PI * 2;
-      const x = Math.cos(a) * radius;
-      const z = Math.sin(a) * radius;
-      positions.push(x, 0, z);
-    }
-  }
-
-  // Two triangles per (ring, column) cell. Columns wrap around.
-  for (let r = 0; r < radialSegments; r++) {
-    for (let c = 0; c < angularSegments; c++) {
-      const cNext = (c + 1) % angularSegments;
-      const a = r * angularSegments + c;
-      const b = r * angularSegments + cNext;
-      const d = (r + 1) * angularSegments + c;
-      const e = (r + 1) * angularSegments + cNext;
-      // Triangle 1: a, d, b
-      indices.push(a, d, b);
-      // Triangle 2: b, d, e
-      indices.push(b, d, e);
-    }
-  }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-  return geo;
-}
-
-// Build a flat disc geometry, also in polar coordinates (in XZ).
-// A single centre vertex is connected by a triangle fan to the first ring;
-// after that it's the same ring × column meshing as the annulus.
-function buildDiscGeometry(outerR, radialSegments, angularSegments) {
-  const positions = [];
-  const indices = [];
-
-  // Vertex 0 is the centre
-  positions.push(0, 0, 0);
-
-  // Rings from r=1 (innermost) to r=radialSegments (outermost)
-  for (let r = 1; r <= radialSegments; r++) {
-    const t = r / radialSegments;
-    const radius = outerR * t;
-    for (let c = 0; c < angularSegments; c++) {
-      const a = (c / angularSegments) * Math.PI * 2;
-      const x = Math.cos(a) * radius;
-      const z = Math.sin(a) * radius;
-      positions.push(x, 0, z);
-    }
-  }
-
-  // Helper: index of vertex at (ring r, column c). ring 0 is the centre.
-  // For r >= 1, index = 1 + (r-1)*angularSegments + c
-  const idx = (r, c) => r === 0 ? 0 : 1 + (r - 1) * angularSegments + (c % angularSegments);
-
-  // Triangle fan from centre to first ring
-  for (let c = 0; c < angularSegments; c++) {
-    const cNext = (c + 1) % angularSegments;
-    indices.push(idx(0, 0), idx(1, c), idx(1, cNext));
-  }
-  // Two triangles per (ring, column) cell for outer rings
-  for (let r = 1; r < radialSegments; r++) {
-    for (let c = 0; c < angularSegments; c++) {
-      const cNext = (c + 1) % angularSegments;
-      const a = idx(r, c);
-      const b = idx(r, cNext);
-      const d = idx(r + 1, c);
-      const e = idx(r + 1, cNext);
-      indices.push(a, d, b);
-      indices.push(b, d, e);
-    }
-  }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-  return geo;
-}
-
-function initThree() {
-  if (renderer) return;
-  const canvas = document.getElementById('three-canvas');
-  const w0 = canvas.offsetWidth || window.innerWidth;
-  const h0 = canvas.offsetHeight || window.innerHeight;
-
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(w0, h0, false);
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
-
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xffffff);
-  scene.fog = new THREE.Fog(0xffffff, 3500, 10000);
-
-  camera = new THREE.PerspectiveCamera(45, w0/h0, 0.1, 15000);
-  camera.position.set(80, 120, 130);
-  camera.lookAt(0, 20, 0);
-
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.08;
-  controls.minDistance = 40;
-  controls.maxDistance = 6000;
-  controls.minPolarAngle = 0.1;
-  controls.maxPolarAngle = Math.PI * 0.49;
-  controls.target.set(0, 20, 0);
-
-  // Lighting: low-angled key light from one side gives bumps a clear
-  // bright/shadowed contrast. Ambient is kept very low so shadows are pronounced;
-  // a faint cool fill from the opposite side prevents the dark sides from
-  // Lighting: a single overhead light shining straight down, plus enough
-  // ambient to keep shadowed undersides from going grey. On the white
-  // environment we want even illumination, no warm/cool bias from side
-  // lights.
-  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-  const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-  sun.position.set(0, 200, 0);    // straight down from above
-  sun.target.position.set(0, 0, 0);
-  scene.add(sun);
-  scene.add(sun.target);
-  // A very gentle white side-fill — just enough to give the columns
-  // a faint shaded side so they read as 3D forms, without tinting them
-  // or creating long shadows.
-  const sideFill = new THREE.DirectionalLight(0xffffff, 0.25);
-  sideFill.position.set(120, 60, 80);
-  scene.add(sideFill);
-
-  // ── Detail plane (disc-shaped, close-up of your immediate area) ─────
-  // Built as a disc with the same outer radius as the annulus' inner radius,
-  // so the two seams line up perfectly.
-  const DETAIL_OUTER = 860;          // matches FAR_INNER below
-  const DETAIL_RADIAL = 60;          // 60 rings × 160 columns ≈ 9600 vertices
-  const DETAIL_ANGULAR = 160;        // (matches the annulus' angular resolution)
-  const planeGeo = buildDiscGeometry(DETAIL_OUTER, DETAIL_RADIAL, DETAIL_ANGULAR);
-  planeGeo.userData.originalPositions = planeGeo.attributes.position.array.slice();
-
-  const planeMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    emissive: 0xffffff,
-    emissiveIntensity: 0.75,
-    toneMapped: false,
-    transparent: false,
-    opacity: 1.0,
-    roughness: 1.0,
-    metalness: 0,
-    side: THREE.DoubleSide,
-    flatShading: false,
-  });
-  plane = new THREE.Mesh(planeGeo, planeMat);
-  // Disc is already in XZ — no rotation needed.
-  plane.position.y = 0;
-  scene.add(plane);
-
-  const wireGeo = new THREE.WireframeGeometry(planeGeo);
-  const wireMat = new THREE.LineBasicMaterial({
-    color: 0x000000,
-    transparent: true,
-    opacity: 0,
-  });
-  const wireframe = new THREE.LineSegments(wireGeo, wireMat);
-  wireframe.visible = false;
-  plane.add(wireframe);
-  plane.userData.wireframe = wireframe;
-  plane.userData.isAnnular = true;   // same vertex layout as the annulus (XZ, Y = height)
-
-  // ── Far plane (the wider Vienna-scale view) ──────────────────
-  // Built as an actual annulus (ring shape) so it has a real geometric hole
-  // where the detail plane sits — no overlap, no inset, no z-fighting.
-  // We mesh it as a polar grid (radial × angular) so it can still deform
-  // with Gaussian peaks.
-  const FAR_INNER = 860;             // covers the detail plane's corners (half-diagonal ~849)
-  const FAR_OUTER = 6700;            // ~4km outer radius → ~8km diameter
-  const FAR_RADIAL = 70;             // rings of vertices radially
-  const FAR_ANGULAR = 160;           // segments around the circle
-
-  const farGeo = buildAnnularPlaneGeometry(FAR_INNER, FAR_OUTER, FAR_RADIAL, FAR_ANGULAR);
-  farGeo.userData.originalPositions = farGeo.attributes.position.array.slice();
-
-  const farMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    emissive: 0xffffff,
-    emissiveIntensity: 0.75,
-    toneMapped: false,
-    transparent: false,
-    opacity: 1.0,
-    roughness: 1.0,
-    metalness: 0,
-    side: THREE.DoubleSide,
-  });
-  farPlane = new THREE.Mesh(farGeo, farMat);
-  // The annular geometry already lives in the XZ plane (with Y for height),
-  // so no rotation is needed.
-  farPlane.position.y = 0;
-  scene.add(farPlane);
-
-  const farWireGeo = new THREE.WireframeGeometry(farGeo);
-  const farWireMat = new THREE.LineBasicMaterial({
-    color: 0x000000,
-    transparent: true,
-    opacity: 0,
-  });
-  const farWire = new THREE.LineSegments(farWireGeo, farWireMat);
-  farWire.visible = false;
-  farPlane.add(farWire);
-  farPlane.userData.wireframe = farWire;
-  farPlane.userData.isAnnular = true;
-  farPlane.userData.innerRadius = FAR_INNER;
-
-  // ── Post-processing ────────────────────────────────────────
-  composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
-  composer.addPass(new UnrealBloomPass(
-    new THREE.Vector2(w0, h0),
-    0.0, 0.8, 0.85
-  ));
-  composer.addPass(new OutputPass());
-
-  const resize = () => {
-    const w = canvas.offsetWidth, h = canvas.offsetHeight;
-    renderer.setSize(w, h, false);
-    composer.setSize(w, h);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-  };
-  window.addEventListener('resize', resize);
-  resize();
-  requestAnimationFrame(()=>requestAnimationFrame(resize));
-
-  rebuildScene();
-  animate();
-}
-
-// Project lat/lng to plane coordinates relative to current position
-function projectToScene(lat, lng) {
-  if (!S.currentPos) return { x: 0, z: 0 };
-  const dLat = lat - S.currentPos.lat;
-  const dLng = lng - S.currentPos.lng;
-  const x = dLng * 111000 * Math.cos(S.currentPos.lat * Math.PI/180) / METRES_PER_UNIT_H;
-  const z = -dLat * 111000 / METRES_PER_UNIT_H;
-  return { x, z };
-}
-
-// Deform the plane mesh so each active anxiety raises a smooth Gaussian peak
-// at its location, with the peak's height = the remaining time until resolution.
-// Overlapping peaks add together, naturally forming ridges/merged tents.
-function activeDataset() {
-  return S.mapMode === 'shared' ? S.sharedAnxieties : S.anxieties;
-}
-
-// ── Column system ──────────────────────────────────────────────
-// Each anxiety becomes one cylindrical column. Its full length =
-// log-mapped duration (so a 1-hour anxiety is short, a 5-year one is
-// noticeably tall but not absurd). Its colour gradient runs along the
-// column from warm-near to cool-far in time. As real time passes, the
-// column sinks downward through the present plane (y=0): the portion above
-// the plane is the "future" of that anxiety, the portion below is "past."
-//
-// Past-portion appearance: a hard cut at y=0 — full colour above,
-// desaturated grey below (handled in the column's shader).
-
-// Logarithmic height mapping in world units. Same formula as the old
-// plane deformation, so durations read at the same visual scale they did.
-function columnFullHeight(durationMs) {
-  const HEIGHT_TAU_MS = 30 * 60 * 1000;
-  const HEIGHT_K = 7;
-  return HEIGHT_K * Math.log(1 + durationMs / HEIGHT_TAU_MS);
-}
-
-// Column colour: based on the user's prior expectation (the future-self colour
-// they picked when logging). A subtle gradient runs from a deeper hue at the
-// bottom (near-present, urgent end) to a lighter hue at the top (far-future
-// end), staying within the same colour family. So a green column is always
-// recognisably green; a long column just shows more of the gradient than a
-// short one. Older anxieties without a priorExpectation use a neutral grey
-// pair so they still appear visible against the white background.
-const COLUMN_GRADIENTS = {
-  better: { near: new THREE.Color('#176555'), far: new THREE.Color('#1db075') },
-  same:   { near: new THREE.Color('#b89214'), far: new THREE.Color('#e6d944') },
-  worse:  { near: new THREE.Color('#311f83'), far: new THREE.Color('#6854da') },
-  null:   { near: new THREE.Color('#7a7e88'), far: new THREE.Color('#c2c5cb') },
-};
-function columnGradientStops(priorExpectation) {
-  return COLUMN_GRADIENTS[priorExpectation || null] || COLUMN_GRADIENTS.null;
-}
-
-// Deterministic small offset per anxiety so multiple columns at the same
-// place fan out into a visible cluster instead of stacking exactly.
-function clusterOffset(id) {
-  // FNV-1a-ish: produce two pseudo-random floats from the id string
-  let h1 = 2166136261, h2 = 0x9e3779b1;
-  for (let i = 0; i < id.length; i++) {
-    h1 ^= id.charCodeAt(i); h1 = Math.imul(h1, 16777619);
-    h2 ^= id.charCodeAt(i); h2 = Math.imul(h2, 2654435769);
-  }
-  const a = ((h1 >>> 0) / 4294967295) * Math.PI * 2;   // angle
-  const r = ((h2 >>> 0) / 4294967295) * 12.0;           // radius up to 12 units (~7m)
-  return { dx: Math.cos(a) * r, dz: Math.sin(a) * r };
-}
-
-// Build a single column mesh for an anxiety.
-function makeColumn(anxiety) {
-  const totalMs = anxiety.resolvedAt - anxiety.createdAt;
-  const totalHeight = Math.max(0.5, columnFullHeight(totalMs));
-
-  // ~5m radius in real-world (1 unit = 0.6m → 5/0.6 ≈ 8.33 units)
-  const radius = 8.33;
-  const geo = new THREE.CylinderGeometry(radius, radius, totalHeight, 24, 32, false);
-  // Pivot so origin is at the BOTTOM of the cylinder (createdAt time)
-  geo.translate(0, totalHeight / 2, 0);
-
-  // Per-vertex colours along the height. Bottom of the cylinder = present-end
-  // (the urgent, "near" part of the future). Top = the furthest moment in time
-  // the user named. Both endpoints stay within the colour family of their
-  // prior expectation, so a green column always reads as green.
-  const stops = columnGradientStops(anxiety.priorExpectation);
-  const positions = geo.attributes.position;
-  const colors = new Float32Array(positions.count * 3);
-  for (let i = 0; i < positions.count; i++) {
-    const yLocal = positions.getY(i);          // 0 .. totalHeight
-    const t = totalHeight > 0 ? (yLocal / totalHeight) : 0;
-    const c = stops.near.clone().lerp(stops.far, Math.max(0, Math.min(1, t)));
-    colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-  const mat = new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    emissive: 0x000000,
-    emissiveIntensity: 0.0,
-    roughness: 1.0,
-    metalness: 0,
-    side: THREE.FrontSide,
-    transparent: true,
-    opacity: 0.9,
-    depthWrite: false,
-  });
-  // Shader injection: discard fragments below the present plane (so the
-  // column visibly shrinks as it sinks), and add a self-emissive contribution
-  // in the column's own vertex colour so it glows in its hue against the
-  // white scene.
-  mat.onBeforeCompile = (shader) => {
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <common>',
-      `#include <common>
-       varying float vWorldY;`
-    ).replace(
-      '#include <project_vertex>',
-      `vWorldY = (modelMatrix * vec4(transformed, 1.0)).y;
-       #include <project_vertex>`
-    );
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <common>',
-      `#include <common>
-       varying float vWorldY;`
-    ).replace(
-      '#include <emissivemap_fragment>',
-      `if (vWorldY < 0.0) discard;
-       totalEmissiveRadiance += vColor * 0.3;`
-    );
-  };
-
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.userData = {
-    anxietyId: anxiety.id,
-    totalHeight,
-    createdAt: anxiety.createdAt,
-    resolvedAt: anxiety.resolvedAt,
-  };
-  return mesh;
-}
-
-// State for active column meshes + their "marks" left behind after resolution
-const columnMeshes = new Map();   // anxiety.id → cylinder mesh
-const markMeshes = new Map();     // anxiety.id → flat disc mesh
-// Compass lines: thin glowing lines on the plane pointing from the user
-// toward nearby clusters of entries (so you can find your way to them).
-const compassLines = [];
-
-// Create a small flat disc to mark the spot where a column once stood.
-// Uses the column's near-present (warm amber) colour so it reads as a
-// faint echo of the original.
-// Colour scheme for marks based on the reflection chosen for that anxiety.
-// Colour scheme for marks/spheres based on the reflection chosen.
-// Two slots: prior expectation (set on log) and reflection (set after the event).
-// Marks render as a radial gradient with prior at the centre and reflection at the edge.
-// Both axes use the same 3-colour scale: green = better/optimistic, yellow = neutral,
-// blue/indigo = worse/pessimistic.
-const REFLECT_COLORS = {
-  null:    '#ffffff',  // unreflected / no prior — clean white slate
-  better:  '#1db075',  // green
-  same:    '#e6d944',  // yellow
-  worse:   '#6854da',  // blue
-};
-const REFLECT_LABELS = {
-  better: 'Better than I expected',
-  same:   'About what I expected',
-  worse:  'Worse than I expected',
-};
-// On screen-future the same colours are framed as future-self projections rather than
-// retrospective reflections. The mapping is identical so the colours mean the same thing.
-const PRIOR_LABELS = {
-  better: "Better than I'd hoped",
-  same:   "About what I'd imagined",
-  worse:  "Harder than I'd anticipated",
-};
-
-function reflectColor(reflection) {
-  return new THREE.Color(REFLECT_COLORS[reflection || null] || REFLECT_COLORS.null);
-}
-
-// Future-self prompt pool. Drawn from when the user reaches screen-future
-// (which now happens before any colour pick). Prompts are written in
-// past tense / future-self voice — the user is imagining themselves on
-// the other side of the event, sending a time capsule backward. All
-// prompts work for both hoped-for and feared events, anchored on care.
-const PRIOR_PROMPTS = [
-  "Looking back, what did you most want to remember about this?",
-  "What did you care about that carried you through?",
-  "What surprised you about how you actually felt afterward?",
-  "What would you tell your past self — the one who just sent this capsule?",
-  "What did you almost not notice that turned out to matter?",
-  "What do you wish you'd held onto more closely while it was happening?",
-  "Who or what helped, even a little?",
-];
-function drawPrompt() {
-  return PRIOR_PROMPTS[Math.floor(Math.random() * PRIOR_PROMPTS.length)];
-}
-
-// Render a radial-gradient mark texture from an array of colour stops
-// (inner → outer). With 2 stops it's the original prior+reflection look;
-// with more stops, each re-do of the expectation adds another ring between
-// the original inner and the outer.
-function makeMarkCanvas(colorStops) {
-  const size = 256;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  const stops = (colorStops && colorStops.length > 0) ? colorStops : ['#ffffff'];
-  const g = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
-  if (stops.length === 1) {
-    g.addColorStop(0, stops[0]);
-    g.addColorStop(1, stops[0]);
-  } else {
-    for (let i = 0; i < stops.length; i++) {
-      g.addColorStop(i / (stops.length - 1), stops[i]);
-    }
-  }
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.arc(size/2, size/2, size/2, 0, Math.PI * 2);
-  ctx.fill();
-  return canvas;
-}
-
-// Build the colour-stop array for an anxiety. The inner stops are the prior
-// expectations in chronological order (original first, then each re-do),
-// and the outermost stop is the reflection colour. White is used as
-// outermost if not yet reflected, and as the only stop if there's no prior.
-function markStopsForAnxiety(anxiety) {
-  const priors = (anxiety.priorExpectations && anxiety.priorExpectations.length > 0)
-    ? anxiety.priorExpectations
-    : (anxiety.priorExpectation ? [anxiety.priorExpectation] : []);
-  const stops = priors.map(p => REFLECT_COLORS[p] || REFLECT_COLORS.null);
-  // Append the reflection colour (or white if unreflected)
-  stops.push(REFLECT_COLORS[anxiety.reflection] || REFLECT_COLORS.null);
-  // If there are no priors at all (edge case for very old entries), the
-  // result is just [white] which renders as a white mark.
-  return stops.length > 0 ? stops : ['#ffffff'];
-}
-
-function makeMark(anxiety) {
-  const markRadius = 8.33;  // same as column radius (5m real-world)
-  const geo = new THREE.CircleGeometry(markRadius, 48);
-  // CircleGeometry lives in XY by default — rotate -PI/2 around X to lay flat
-  geo.rotateX(-Math.PI / 2);
-  // Multi-stop radial gradient: each prior expectation becomes an inner ring,
-  // outermost stop is the reflection (or white if unreflected).
-  const canvas = makeMarkCanvas(markStopsForAnxiety(anxiety));
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  const mat = new THREE.MeshStandardMaterial({
-    map: texture,
-    emissive: 0x000000,
-    emissiveIntensity: 0.0,
-    roughness: 1.0,
-    metalness: 0,
-    side: THREE.FrontSide,
-    transparent: true,
-    opacity: 1.0,
-    depthWrite: false,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.userData = {
-    anxietyId: anxiety.id,
-    resolvedAt: anxiety.resolvedAt,
-    canvas,           // keep a reference so we can re-render the gradient
-    texture,
-  };
-  mesh.visible = false;  // only shown once the anxiety has resolved
-  return mesh;
-}
-
-// Re-render the mark's radial gradient texture. Used when the user reflects,
-// edits a reflection, or re-does an expectation — we look up the latest
-// anxiety state and rebuild stops from scratch.
-function refreshMarkColors(anxietyId) {
-  const mark = markMeshes.get(anxietyId);
-  if (!mark) return;
-  const anxiety = S.anxieties.find(a => a.id === anxietyId)
-              || S.sharedAnxieties.find(a => a.id === anxietyId);
-  if (!anxiety) return;
-  const ud = mark.userData;
-  const ctx = ud.canvas.getContext('2d');
-  ctx.clearRect(0, 0, ud.canvas.width, ud.canvas.height);
-  const newCanvas = makeMarkCanvas(markStopsForAnxiety(anxiety));
-  ctx.drawImage(newCanvas, 0, 0);
-  ud.texture.needsUpdate = true;
-}
-
-// Update an existing mark's reflection colour without rebuilding the whole scene.
-function setMarkReflection(anxietyId, reflection) {
-  // The anxiety object in S.anxieties is the source of truth — once it's
-  // updated, refreshMarkColors picks up the new state.
-  refreshMarkColors(anxietyId);
-}
-
-// ── Compass lines ──
-// Thin glowing lines on the plane that point from the user's position outward
-// toward nearby clusters of entries. They appear only for clusters that are
-// far enough away that you can't easily see them (>~36m / >60 world units).
-// Cluster threshold: any two entries within ~200m group together.
-const COMPASS_CLUSTER_THRESHOLD = 333;  // ~200m in world units (0.6m/unit)
-const COMPASS_MIN_DISTANCE      = 35;   // ~21m: only skip lines for very-close stuff
-const COMPASS_MAX_DISTANCE      = 50000; // ~30km: only skip cross-country-distant stuff
-
-function clusterEntries(entries) {
-  // entries: [{ x, z, id }]. Returns: [{ x, z, count }] for each cluster.
-  // Greedy clustering with a fixed radius.
-  const clusters = [];
-  for (const e of entries) {
-    let best = null;
-    let bestD = Infinity;
-    for (const c of clusters) {
-      const dx = e.x - c.x, dz = e.z - c.z;
-      const d = Math.sqrt(dx*dx + dz*dz);
-      if (d < bestD && d < COMPASS_CLUSTER_THRESHOLD) {
-        bestD = d;
-        best = c;
-      }
-    }
-    if (best) {
-      // Incremental centroid update
-      best.x = (best.x * best.count + e.x) / (best.count + 1);
-      best.z = (best.z * best.count + e.z) / (best.count + 1);
-      best.count += 1;
-    } else {
-      clusters.push({ x: e.x, z: e.z, count: 1 });
-    }
-  }
-  return clusters;
-}
-
-function clearCompassLines() {
-  for (const line of compassLines) {
-    if (line.geometry) line.geometry.dispose();
-    if (line.material) line.material.dispose();
-    scene.remove(line);
-  }
-  compassLines.length = 0;
-}
-
-function refreshCompassLines() {
-  clearCompassLines();
-  if (!S.currentPos) return;
-  const entries = [];
-  for (const a of S.anxieties) {
-    if (!a.lat || !a.lng) continue;
-    const { x, z } = projectToScene(a.lat, a.lng);
-    entries.push({ x, z, id: a.id });
-  }
-  if (entries.length === 0) return;
-  const clusters = clusterEntries(entries);
-  for (const c of clusters) {
-    const d = Math.sqrt(c.x * c.x + c.z * c.z);
-    if (d < COMPASS_MIN_DISTANCE) continue;
-    if (d > COMPASS_MAX_DISTANCE) continue;
-
-    const dirX = c.x / d, dirZ = c.z / d;
-    const startMargin = 20;
-    const endMargin   = 25;
-    const sx = dirX * startMargin, sz = dirZ * startMargin;
-    // For far-away clusters, cap the line endpoint at the edge of the detail
-    // plane (820 units, just inside the 860-radius disc) — the line still
-    // points correctly toward the cluster but doesn't extend off the visible
-    // ground. Closer clusters still terminate just short of their centroid.
-    const PLANE_EDGE = 820;
-    const targetD = Math.min(d - endMargin, PLANE_EDGE);
-    const ex = dirX * targetD, ez = dirZ * targetD;
-    const length = Math.hypot(ex - sx, ez - sz);
-    if (length < 5) continue;
-
-    const RIBBON_WIDTH = 0.7;
-    const SEGMENTS = 24;
-    // Custom geometry: two parallel strips of vertices joined by triangles,
-    // so we can per-vertex colour them for the fade along the length.
-    // We bake the fade into the RGB channels (lerping the line colour toward
-    // pure white at the user-end) instead of using vertex alpha — three.js
-    // version-dependent quirks around RGBA vertex colour interpretation can
-    // make alpha-baked fades render invisible. Lerping the colour itself is
-    // robust and the visual result is the same on a white background.
-    const positions = new Float32Array((SEGMENTS + 1) * 2 * 3);
-    const colors    = new Float32Array((SEGMENTS + 1) * 2 * 3);
-    const indices   = [];
-    const px = -dirZ * (RIBBON_WIDTH / 2);
-    const pz =  dirX * (RIBBON_WIDTH / 2);
-    // Target colour at the bright (cluster) end of the ribbon
-    const TARGET_R = 0.13, TARGET_G = 0.69, TARGET_B = 0.46;
-    for (let i = 0; i <= SEGMENTS; i++) {
-      const t = i / SEGMENTS;
-      const cx = sx + (ex - sx) * t;
-      const cz = sz + (ez - sz) * t;
-      positions[(i*2)*3]     = cx + px;
-      positions[(i*2)*3 + 1] = 0.35;
-      positions[(i*2)*3 + 2] = cz + pz;
-      positions[(i*2+1)*3]     = cx - px;
-      positions[(i*2+1)*3 + 1] = 0.35;
-      positions[(i*2+1)*3 + 2] = cz - pz;
-      // Smoothstep from white (near user) to target green (near cluster)
-      const tt = t * t * (3.0 - 2.0 * t);
-      const r = 1.0 - (1.0 - TARGET_R) * tt;
-      const g = 1.0 - (1.0 - TARGET_G) * tt;
-      const b = 1.0 - (1.0 - TARGET_B) * tt;
-      for (const idx of [i*2, i*2+1]) {
-        colors[idx*3]     = r;
-        colors[idx*3 + 1] = g;
-        colors[idx*3 + 2] = b;
-      }
-      if (i < SEGMENTS) {
-        const a0 = i*2, a1 = i*2+1, b0 = (i+1)*2, b1 = (i+1)*2+1;
-        indices.push(a0, b0, a1, a1, b0, b1);
-      }
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geo.setAttribute('color',    new THREE.BufferAttribute(colors, 3));
-    geo.setIndex(indices);
-    const mat = new THREE.MeshBasicMaterial({
-      vertexColors: true,
-      depthWrite: false,
-      toneMapped: false,
-      side: THREE.DoubleSide,
+    const r = await fetch(`${SUPABASE_URL.replace(/\/+$/, '')}/rest/v1/weather_field?id=eq.1`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Prefer': 'return=minimal',
+      },
+      body: JSON.stringify({
+        valence: quantiseField(state.valence),
+        arousal: quantiseField(state.arousal),
+        updated_at: new Date().toISOString(),
+      }),
     });
-    const mesh = new THREE.Mesh(geo, mat);
-    scene.add(mesh);
-    compassLines.push(mesh);
+    if (!r.ok) console.warn('Supabase field save failed', r.status);
+  } catch (e) {
+    console.warn('Supabase field save error', e);
   }
-  console.log(`compass: ${entries.length} entries, ${clusters.length} clusters, ${compassLines.length} lines drawn`);
 }
 
-// Rebuild all columns from scratch based on the active dataset.
-// Call this whenever the data set changes (mode toggle, new anxiety, etc.).
-function rebuildColumns() {
-  // Dispose old columns and marks
-  for (const m of columnMeshes.values()) {
-    if (m.geometry) m.geometry.dispose();
-    if (m.material) m.material.dispose();
-    scene.remove(m);
+/* ═══════════════════════════════════════════════════════════════════════
+   MAP + VISUALIZATION
+   ═══════════════════════════════════════════════════════════════════════ */
+const map = L.map('map', {
+  center: [VIENNA_CENTER.lat, VIENNA_CENTER.lng],
+  zoom: 11,
+  zoomControl: true,
+}).setView([VIENNA_CENTER.lat, VIENNA_CENTER.lng], 11);
+
+// Light basemap, very faded so the map is essentially white with subtle
+// street outlines for orientation. No labels — purely aesthetic.
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap, © CartoDB',
+  maxZoom: 18,
+  opacity: 0.35,
+}).addTo(map);
+
+// Exhibition marker
+const exhibitIcon = L.divIcon({
+  className: '',
+  html: '<div class="exhibit-pin" title="Exhibition site"></div>',
+  iconSize: [18, 18], iconAnchor: [9, 9],
+});
+L.marker([EXHIBITION.lat, EXHIBITION.lng], { icon: exhibitIcon })
+  .addTo(map)
+  .bindPopup('Exhibition site');
+document.getElementById('exhibit-coords').textContent =
+  `${EXHIBITION.lat.toFixed(4)}, ${EXHIBITION.lng.toFixed(4)}`;
+
+// ── Colour space utilities (sRGB ↔ Lab ↔ LCh) ──
+// We blend in LCh space — perceptually uniform, so transitions between
+// the four corner colours stay clean instead of going through muddy
+// intermediates like RGB-blend does.
+function srgbToLinear(c) {
+  c /= 255;
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+function linearToSrgb(c) {
+  const v = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1/2.4) - 0.055;
+  return Math.max(0, Math.min(255, Math.round(v * 255)));
+}
+function rgbToXyz(r, g, b) {
+  const R = srgbToLinear(r), G = srgbToLinear(g), B = srgbToLinear(b);
+  return [
+    R * 0.4124564 + G * 0.3575761 + B * 0.1804375,
+    R * 0.2126729 + G * 0.7151522 + B * 0.0721750,
+    R * 0.0193339 + G * 0.1191920 + B * 0.9503041,
+  ];
+}
+function xyzToRgb(x, y, z) {
+  const R = x *  3.2404542 + y * -1.5371385 + z * -0.4985314;
+  const G = x * -0.9692660 + y *  1.8760108 + z *  0.0415560;
+  const B = x *  0.0556434 + y * -0.2040259 + z *  1.0572252;
+  return [linearToSrgb(R), linearToSrgb(G), linearToSrgb(B)];
+}
+// D65 reference white
+const Xn = 0.95047, Yn = 1.0, Zn = 1.08883;
+function xyzToLab(x, y, z) {
+  function f(t) { return t > 0.008856 ? Math.cbrt(t) : (7.787 * t + 16/116); }
+  const fx = f(x / Xn), fy = f(y / Yn), fz = f(z / Zn);
+  return [
+    116 * fy - 16,        // L
+    500 * (fx - fy),      // a
+    200 * (fy - fz),      // b
+  ];
+}
+function labToXyz(L, a, b) {
+  const fy = (L + 16) / 116;
+  const fx = fy + a / 500;
+  const fz = fy - b / 200;
+  function fInv(t) { const t3 = t*t*t; return t3 > 0.008856 ? t3 : (t - 16/116) / 7.787; }
+  return [fInv(fx) * Xn, fInv(fy) * Yn, fInv(fz) * Zn];
+}
+function labToLch(L, a, b) {
+  const C = Math.sqrt(a*a + b*b);
+  let H = Math.atan2(b, a) * 180 / Math.PI;
+  if (H < 0) H += 360;
+  return [L, C, H];
+}
+function lchToLab(L, C, H) {
+  const h = H * Math.PI / 180;
+  return [L, C * Math.cos(h), C * Math.sin(h)];
+}
+function rgbToLch(r, g, b) {
+  const [X, Y, Z] = rgbToXyz(r, g, b);
+  const [L, a, b_] = xyzToLab(X, Y, Z);
+  return labToLch(L, a, b_);
+}
+function lchToRgb(L, C, H) {
+  const [Lab_L, a, b] = lchToLab(L, C, H);
+  const [X, Y, Z] = labToXyz(Lab_L, a, b);
+  return xyzToRgb(X, Y, Z);
+}
+
+// Interpolate hue circularly — always take the shorter arc
+function lerpHue(h1, h2, t) {
+  let d = h2 - h1;
+  if (d > 180) d -= 360;
+  if (d < -180) d += 360;
+  let h = h1 + d * t;
+  if (h < 0) h += 360;
+  if (h >= 360) h -= 360;
+  return h;
+}
+function lerpLch(c1, c2, t) {
+  return [
+    c1[0] + (c2[0] - c1[0]) * t,
+    c1[1] + (c2[1] - c1[1]) * t,
+    lerpHue(c1[2], c2[2], t),
+  ];
+}
+
+function rgbToLab(r, g, b) {
+  const [X, Y, Z] = rgbToXyz(r, g, b);
+  return xyzToLab(X, Y, Z);
+}
+function labToRgb(L, a, b) {
+  const [X, Y, Z] = labToXyz(L, a, b);
+  return xyzToRgb(X, Y, Z);
+}
+
+// Pre-compute Lab for the four corners. We blend in Lab — perceptually
+// uniform AND Cartesian, so there's no hue-wraparound discontinuity that
+// LCh interpolation can produce on a 2D bilinear blend.
+const CORNER_LIGHT     = [110, 230, 130];   // vivid spring green
+const CORNER_TURBULENT = [180,  60, 200];   // punchy magenta-violet
+const CORNER_CALM      = [250, 200,  80];   // saturated warm amber
+const CORNER_HEAVY     = [ 30,  50, 150];   // deep saturated blue
+const CORNER_LIGHT_LAB     = rgbToLab(...CORNER_LIGHT);
+const CORNER_TURBULENT_LAB = rgbToLab(...CORNER_TURBULENT);
+const CORNER_CALM_LAB      = rgbToLab(...CORNER_CALM);
+const CORNER_HEAVY_LAB     = rgbToLab(...CORNER_HEAVY);
+
+function lerpLab(c1, c2, t) {
+  return [
+    c1[0] + (c2[0] - c1[0]) * t,
+    c1[1] + (c2[1] - c1[1]) * t,
+    c1[2] + (c2[2] - c1[2]) * t,
+  ];
+}
+
+function blendCorners(valence, arousal) {
+  // valence/arousal in roughly [-1, +1]
+  const tx = Math.max(0, Math.min(1, (valence + 1) * 0.5));
+  const ty = Math.max(0, Math.min(1, (arousal + 1) * 0.5));
+  // Bilinear blend in Lab space (no hue discontinuity)
+  const top = lerpLab(CORNER_TURBULENT_LAB, CORNER_LIGHT_LAB, tx);
+  const bot = lerpLab(CORNER_HEAVY_LAB,     CORNER_CALM_LAB,  tx);
+  const lab = lerpLab(bot, top, ty);
+  return labToRgb(lab[0], lab[1], lab[2]);
+}
+
+// Canvas overlay for the field. We render at higher resolution than the
+// simulation grid, bilinearly sampling the underlying valence/arousal
+// fields, so the displayed weather looks like smooth continuous shapes
+// rather than discrete cells.
+// Render scale: with the 192-cell grid, 2× upsample gives 384×384 output —
+// smooth shapes, low render cost. The grid itself is fine enough that we
+// don't need huge upscaling for smooth visuals.
+const RENDER_SCALE = 2;
+const RENDER_SIZE  = GRID_SIZE * RENDER_SCALE;       // 384×384
+const fieldCanvas = document.createElement('canvas');
+fieldCanvas.width = RENDER_SIZE;
+fieldCanvas.height = RENDER_SIZE;
+fieldCanvas.style.imageRendering = 'auto';
+const fieldCtx = fieldCanvas.getContext('2d');
+
+// Bilinear sample of a channel at floating-point grid coordinates.
+function sampleField(channel, x, y) {
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  const fx = x - x0,        fy = y - y0;
+  function safe(cx, cy) {
+    if (cx < 0 || cx >= GRID_SIZE || cy < 0 || cy >= GRID_SIZE) return 0;
+    return channel[cy * GRID_SIZE + cx];
   }
-  columnMeshes.clear();
-  for (const m of markMeshes.values()) {
-    if (m.geometry) m.geometry.dispose();
-    if (m.material) {
-      if (m.material.map) m.material.map.dispose();
-      m.material.dispose();
+  const c00 = safe(x0,   y0);
+  const c10 = safe(x0+1, y0);
+  const c01 = safe(x0,   y0+1);
+  const c11 = safe(x0+1, y0+1);
+  const top = c00 + (c10 - c00) * fx;
+  const bot = c01 + (c11 - c01) * fx;
+  return top + (bot - top) * fy;
+}
+
+function cellColor(valence, arousal) {
+  // Vibrancy fix: at low intensity, the (valence, arousal) point is near
+  // the picker's center which blends to a muted neutral. To keep painted
+  // colour visible at the soft edges of a blob, we sample blendCorners at
+  // the *unit-direction* of (valence, arousal) — i.e. project to the picker's
+  // edge — and use the magnitude only for alpha. The cell's colour identity
+  // (its hue family) thus stays consistent across the whole blob; only its
+  // opacity fades at the edges.
+  const intensity = Math.min(1.0, Math.sqrt(valence*valence + arousal*arousal));
+  if (intensity < 0.02) return [0, 0, 0, 0];
+
+  // Direction vector. Don't normalise below a soft floor or low-intensity
+  // cells would suddenly snap to a pure corner colour.
+  const dirScale = Math.max(intensity, 0.45);
+  const dirV = valence / dirScale;
+  const dirA = arousal / dirScale;
+  const [r, g, b] = blendCorners(dirV, dirA);
+
+  // Alpha curves up faster than linear so weak deposits still register
+  // visibly, but the very faintest dissipating cells fade to transparent.
+  const alpha = Math.min(1.0, intensity * 1.4);
+  return [r, g, b, alpha * 215];
+}
+
+const ImgOverlay = L.imageOverlay('', [
+  [VIENNA_CENTER.lat - HALF_LAT, VIENNA_CENTER.lng - HALF_LNG],
+  [VIENNA_CENTER.lat + HALF_LAT, VIENNA_CENTER.lng + HALF_LNG],
+], { opacity: 1.0, interactive: false });
+ImgOverlay.addTo(map);
+// Smooth bilinear scaling (default), since the canvas is now already
+// rendered at high resolution.
+
+function redrawField() {
+  const img = fieldCtx.createImageData(RENDER_SIZE, RENDER_SIZE);
+  // For each output pixel, compute the (sub-cell) grid coords and
+  // bilinearly sample both channels, then convert to LCh-blended colour.
+  for (let py = 0; py < RENDER_SIZE; py++) {
+    // Flip Y for image (north up). Map py [0..RENDER_SIZE) to grid-Y
+    // (GRID_SIZE-1..0) so the north of Vienna appears at the top.
+    const gy = GRID_SIZE - 1 - (py / RENDER_SCALE);   // floating
+    for (let px = 0; px < RENDER_SIZE; px++) {
+      const gx = px / RENDER_SCALE;
+      const v = sampleField(state.valence, gx, gy);
+      const a = sampleField(state.arousal, gx, gy);
+      const [r, g, b, alpha] = cellColor(v, a);
+      const idx = (py * RENDER_SIZE + px) * 4;
+      img.data[idx]   = r;
+      img.data[idx+1] = g;
+      img.data[idx+2] = b;
+      img.data[idx+3] = alpha;
     }
-    scene.remove(m);
   }
-  markMeshes.clear();
-
-  if (!S.currentPos) return;
-
-  for (const a of activeDataset()) {
-    const { x, z } = projectToScene(a.lat, a.lng);
-    const off = clusterOffset(a.id);
-    const px = x + off.dx;
-    const pz = z + off.dz;
-
-    const col = makeColumn(a);
-    col.position.x = px;
-    col.position.z = pz;
-    scene.add(col);
-    columnMeshes.set(a.id, col);
-
-    const mark = makeMark(a);
-    mark.position.x = px;
-    mark.position.y = 0.6;     // ~0.36m up — invisible from any normal angle, kills z-fighting
-    mark.position.z = pz;
-    scene.add(mark);
-    markMeshes.set(a.id, mark);
-  }
-  refreshCompassLines();
-  updateColumnPositions();
+  fieldCtx.putImageData(img, 0, 0);
+  ImgOverlay.setUrl(fieldCanvas.toDataURL());
 }
 
-// Per-tick update: just set each column's Y based on simNow.
-// The cylinder geometry has its bottom at local Y=0, so the column's
-// Y position IS where the bottom (createdAt time) sits in world space.
-//
-// As simNow advances past createdAt, the bottom y decreases (sinks),
-// and once simNow passes resolvedAt the top also drops below 0.
-function updateColumnPositions() {
-  const simNow = nowMs() + S.simOffset;
-  for (const m of columnMeshes.values()) {
-    const ud = m.userData;
-    // Hide columns whose anxiety hasn't been created yet (relative to simNow).
-    if (ud.createdAt > simNow) { m.visible = false; continue; }
-    m.visible = true;
-    // See sinking-math notes in the column system comment above.
-    const remainingMs = ud.resolvedAt - simNow;
-    if (remainingMs > 0) {
-      const heightRemaining = columnFullHeight(remainingMs);
-      m.position.y = -(ud.totalHeight - heightRemaining);
-    } else {
-      const sinkExtra = columnFullHeight(-remainingMs);
-      m.position.y = -ud.totalHeight - sinkExtra;
-    }
+function updateLocalReading() {
+  const [c, r] = latLngToCell(EXHIBITION.lat, EXHIBITION.lng);
+  const v = getCell(state.valence, c, r);
+  const ar = getCell(state.arousal, c, r);
+  // Pick the dominant corner — closest of the four reference corners
+  const corners = [
+    { name: 'light',      v: +1, a: +1 },
+    { name: 'turbulent',  v: -1, a: +1 },
+    { name: 'calm',       v: +1, a: -1 },
+    { name: 'heavy',      v: -1, a: -1 },
+  ];
+  let nearest = corners[0], minD = Infinity;
+  for (const c of corners) {
+    const d = (c.v - v) ** 2 + (c.a - ar) ** 2;
+    if (d < minD) { minD = d; nearest = c; }
   }
-  // Marks: visible only once the anxiety has resolved (simNow > resolvedAt).
-  for (const mark of markMeshes.values()) {
-    mark.visible = mark.userData.resolvedAt <= simNow;
-  }
+  const intensity = Math.sqrt(v*v + ar*ar);
+  let label;
+  if (intensity < 0.15) label = 'neutral';
+  else if (intensity < 0.4) label = `slightly ${nearest.name}`;
+  else label = nearest.name;
+  document.getElementById('local-reading').textContent =
+    `${label} (v=${v.toFixed(2)}, a=${ar.toFixed(2)})`;
 }
 
-// Backwards-compat alias: anywhere old code called deformPlane(), it now
-// just refreshes the columns' vertical position. Data-set changes need
-// to call rebuildColumns() explicitly.
-function deformPlane() {
-  updateColumnPositions();
+/* ═══════════════════════════════════════════════════════════════════════
+   INTERACTION
+   ═══════════════════════════════════════════════════════════════════════ */
+let userMarker = null;
+
+function setUserLatLng(lat, lng) {
+  state.userLatLng = { lat, lng };
+  if (userMarker) userMarker.remove();
+  userMarker = L.marker([lat, lng], {
+    icon: L.divIcon({
+      className: '',
+      html: '<div class="gps-pin"></div>',
+      iconSize: [14, 14], iconAnchor: [7, 7],
+    }),
+  }).addTo(map);
+  document.getElementById('status').textContent = `At ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
 }
 
-function rebuildScene() {
-  rebuildColumns();
-}
+map.on('click', (e) => {
+  setUserLatLng(e.latlng.lat, e.latlng.lng);
+});
 
-let lastNowUpdate = 0;
-function animate() {
-  requestAnimationFrame(animate);
-  const t = performance.now();
-  // Deform 4x per second is plenty — the topography only changes slowly,
-  // following real-world time. Plane mesh has ~26k vertices so we want this throttled.
-  if (t - lastNowUpdate > 250) {
-    lastNowUpdate = t;
-    deformPlane();
-  }
-  controls.update();
-  composer.render();
-}
-
-// ── Geolocation ────────────────────────────────────────────────
-function startWatch() {
+document.getElementById('btn-locate').addEventListener('click', () => {
   if (!navigator.geolocation) {
-    toast('Geolocation not available in this browser');
+    document.getElementById('status').textContent = 'No geolocation support.';
     return;
   }
-  S.watchId = navigator.geolocation.watchPosition(
-    pos => {
-      const prev = S.currentPos;
-      S.currentPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-      console.log('GPS fix:', S.currentPos.lat.toFixed(5), S.currentPos.lng.toFixed(5),
-        '±' + Math.round(pos.coords.accuracy) + 'm');
-      // First fix, or position moved meaningfully → rebuild columns
-      // (their positions are computed relative to S.currentPos)
-      if (!prev ||
-          Math.abs(prev.lat - S.currentPos.lat) > 0.00001 ||
-          Math.abs(prev.lng - S.currentPos.lng) > 0.00001) {
-        rebuildColumns();
-      }
-      // Check whether we're near any unreflected resolved anxieties
-      if (typeof checkReflectProximity === 'function') checkReflectProximity();
-    },
-    err => {
-      const messages = {
-        1: 'Location permission denied',
-        2: 'Location unavailable right now',
-        3: 'Locating timed out — retrying',
-      };
-      console.warn('Geolocation error:', err.code, err.message);
-      toast(messages[err.code] || 'Location error');
-    },
-    // maximumAge: 0 → never use a cached position; always wait for a fresh fix
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
+  document.getElementById('status').textContent = 'Getting location…';
+  navigator.geolocation.getCurrentPosition(
+    (pos) => setUserLatLng(pos.coords.latitude, pos.coords.longitude),
+    (err) => { document.getElementById('status').textContent = `Location error: ${err.message}`; }
   );
+});
+
+const modal = document.getElementById('modal');
+
+/* ── Colour picker (4-corner square) ──────────────────────────────────── */
+const pickerCanvas = document.getElementById('picker-canvas');
+const pickerCtx = pickerCanvas.getContext('2d');
+const pickerPin = document.getElementById('picker-pin');
+let pickerSel = { x: 80, y: 80 };   // pixel position within 160×160 picker
+
+function drawPicker() {
+  // Render the 160×160 picker by sampling cellColor at each blend position.
+  const W = pickerCanvas.width, H = pickerCanvas.height;
+  const img = pickerCtx.createImageData(W, H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      // Picker top-left = TURBULENT-ish (low val, high arousal)? No — let me
+      // re-derive: our labels in HTML are
+      //   top-left = light, top-right = turbulent
+      //   bot-left = calm,  bot-right = heavy
+      // So picker X axis is +val on left → -val on right (because right side
+      // is turbulent / heavy = low valence). Hmm that's counter-intuitive.
+      // Let me flip so right = positive valence (calm / light).
+      // Re-label HTML labels to match: TL=turbulent, TR=light, BL=heavy, BR=calm.
+      // (We'll update the HTML labels too.)
+      const tx = x / (W - 1);   // 0 = left, 1 = right
+      const ty = y / (H - 1);   // 0 = top, 1 = bottom
+      const valence = (tx * 2 - 1);   // -1 left … +1 right
+      const arousal = -(ty * 2 - 1);  // top = high arousal, bottom = low
+      const [r, g, b] = blendCorners(valence, arousal);
+      const idx = (y * W + x) * 4;
+      img.data[idx] = r; img.data[idx+1] = g; img.data[idx+2] = b; img.data[idx+3] = 255;
+    }
+  }
+  pickerCtx.putImageData(img, 0, 0);
 }
 
-// ── Toast ──────────────────────────────────────────────────────
-function toast(msg) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  setTimeout(()=>el.classList.remove('show'), 2500);
-}
-
-// ── Boot ───────────────────────────────────────────────────────
-hydrate();
-function whenSized(el, cb, maxTries=60) {
-  let tries = 0;
-  const check = () => {
-    if (el.offsetWidth > 0 && el.offsetHeight > 0) return cb();
-    if (++tries >= maxTries) return cb();
-    requestAnimationFrame(check);
+function pickerSelToValenceArousal() {
+  const tx = pickerSel.x / (pickerCanvas.width - 1);
+  const ty = pickerSel.y / (pickerCanvas.height - 1);
+  return {
+    valence: tx * 2 - 1,
+    arousal: -(ty * 2 - 1),
   };
-  check();
 }
-
-whenSized(document.getElementById('three-canvas'), () => {
-  initThree();
-  startWatch();
-});
-
-// Try to send any entries that failed to share earlier (offline, flaky net).
-// A small delay keeps the initial render unblocked.
-setTimeout(() => { flushShareQueue(); }, 2500);
-// And whenever the browser regains connectivity.
-window.addEventListener('online', () => { flushShareQueue(); });
-
-// ── Events: log flow ───────────────────────────────────────────
-
-// Open log screen: reset all picker state, capture current position
-document.getElementById('btn-log').addEventListener('click', () => {
-  if (!S.currentPos) { toast('Still locating you — try again in a moment'); return; }
-  S.pendingPos = { ...S.currentPos };
-  resetLogState();
-  // Default tab: Quick pick
-  switchMode('quick');
-  document.getElementById('location-status').textContent =
-    `📍 ${fmtCoord(S.pendingPos.lat, S.pendingPos.lng)}`;
-  show('screen-log');
-});
-
-function resetLogState() {
-  S.selectedAmount = null;
-  S.selectedUnit = null;
-  S.selectedResolvedAt = null;
-  S.selectedLabel = null;
-  S.selectedPriorAnswer = null;
-  S.selectedPriorExpectation = null;
-  document.querySelectorAll('.quick-pick').forEach(b => b.classList.remove('active'));
-  document.getElementById('duration-amount').value = '';
-  document.getElementById('duration-unit').value = 'days';
-  document.getElementById('exact-datetime').value = '';
-  document.getElementById('label-input').value = '';
-  document.getElementById('resolved-preview').style.display = 'none';
-  document.getElementById('btn-continue').disabled = true;
-  // Reset screen-future
-  document.getElementById('prior-text').value = '';
-  document.getElementById('btn-to-present').disabled = true;
-  // Reset screen-present
-  document.querySelectorAll('#present-options .reflect-option').forEach(b => b.classList.remove('selected'));
-  document.getElementById('btn-save').disabled = true;
+function movePickerPin(px, py) {
+  pickerSel.x = Math.max(0, Math.min(pickerCanvas.width - 1, px));
+  pickerSel.y = Math.max(0, Math.min(pickerCanvas.height - 1, py));
+  // CSS pin sits absolute inside .picker which is 160×160
+  pickerPin.style.left = (pickerSel.x / pickerCanvas.width * 100) + '%';
+  pickerPin.style.top  = (pickerSel.y / pickerCanvas.height * 100) + '%';
 }
-
-// Switch between Quick / Custom / Exact panels
-function switchMode(mode) {
-  S.currentMode = mode;
-  document.querySelectorAll('.mode-tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.mode === mode);
-  });
-  document.querySelectorAll('.mode-panel').forEach(p => {
-    p.style.display = p.dataset.panel === mode ? '' : 'none';
-  });
-  // Clear selections from OTHER modes so they don't carry over hidden
-  if (mode !== 'quick') {
-    document.querySelectorAll('.quick-pick').forEach(b => b.classList.remove('active'));
-  }
-  if (mode !== 'custom') {
-    document.getElementById('duration-amount').value = '';
-  }
-  if (mode !== 'exact') {
-    document.getElementById('exact-datetime').value = '';
-  }
-  S.selectedAmount = null;
-  S.selectedUnit = null;
-  S.selectedResolvedAt = null;
-  updateResolvedPreview();
-}
-
-document.querySelectorAll('.mode-tab').forEach(tab => {
-  tab.addEventListener('click', () => switchMode(tab.dataset.mode));
-});
-
-document.getElementById('btn-back').addEventListener('click', () => {
-  show('screen-main');
-});
-
-// Compute the resolvedAt timestamp the user has chosen, regardless of mode.
-// Returns null if nothing valid is selected yet.
-function currentResolvedAt() {
-  if (S.selectedResolvedAt) return S.selectedResolvedAt;
-  if (S.selectedAmount && S.selectedUnit) {
-    return addDuration(nowMs(), S.selectedAmount, S.selectedUnit);
-  }
-  return null;
-}
-
-function updateResolvedPreview() {
-  const resolvedAt = currentResolvedAt();
-  const validTime = resolvedAt && resolvedAt > nowMs();
-  if (!validTime) {
-    document.getElementById('resolved-preview').style.display = 'none';
-  } else {
-    document.getElementById('resolved-date').textContent = fmtDate(resolvedAt);
-    document.getElementById('resolved-relative').textContent =
-      `that's ${fmtRelative(resolvedAt)}`;
-    document.getElementById('resolved-preview').style.display = 'block';
-  }
-  const labelOk = document.getElementById('label-input').value.trim().length > 0;
-  document.getElementById('btn-continue').disabled = !(validTime && labelOk);
-}
-
-// Re-check Continue-button state whenever the label field changes.
-document.getElementById('label-input').addEventListener('input', updateResolvedPreview);
-
-// Quick-pick buttons
-document.querySelectorAll('.quick-pick').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.quick-pick').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    S.selectedAmount = parseInt(btn.dataset.amount);
-    S.selectedUnit = btn.dataset.unit;
-    S.selectedResolvedAt = null;
-    updateResolvedPreview();
-  });
-});
-
-// Custom-duration inputs
-document.getElementById('duration-amount').addEventListener('input', e => {
-  const val = parseInt(e.target.value);
-  if (val > 0) {
-    S.selectedAmount = val;
-    S.selectedUnit = document.getElementById('duration-unit').value;
-    S.selectedResolvedAt = null;
-  } else {
-    S.selectedAmount = null;
-    S.selectedUnit = null;
-  }
-  updateResolvedPreview();
-});
-
-document.getElementById('duration-unit').addEventListener('change', e => {
-  if (S.selectedAmount) {
-    S.selectedUnit = e.target.value;
-    updateResolvedPreview();
-  }
-});
-
-// Exact date/time input
-document.getElementById('exact-datetime').addEventListener('input', e => {
-  const val = e.target.value;
-  if (!val) {
-    S.selectedResolvedAt = null;
-  } else {
-    const parsed = new Date(val).getTime();
-    if (!isNaN(parsed)) {
-      S.selectedResolvedAt = parsed;
-      S.selectedAmount = null;
-      S.selectedUnit = null;
-    } else {
-      S.selectedResolvedAt = null;
-    }
-  }
-  updateResolvedPreview();
-});
-
-// Continue from screen-log → screen-future (the time-capsule step).
-// Captures place + label + time, draws a fresh prompt, shows the textarea.
-document.getElementById('btn-continue').addEventListener('click', () => {
-  if (!S.pendingPos) return;
-  const resolvedAt = currentResolvedAt();
-  if (!resolvedAt || resolvedAt <= nowMs()) return;
-  const label = document.getElementById('label-input').value.trim();
-  if (!label) return;
-  S.selectedResolvedAt = resolvedAt;
-  S.selectedLabel = label;
-  // Populate the future banner with the chosen date
-  document.getElementById('future-banner-date').textContent = fmtDate(resolvedAt);
-  // Always draw a fresh prompt when entering the screen (re-randomises if user
-  // goes back and comes forward again — sometimes a different question lands
-  // differently). If the user has typed something we don't clear it; only
-  // an empty textarea will see the new prompt as the trigger.
-  document.getElementById('prior-prompt-text').textContent = drawPrompt();
-  // Fresh log: ensure the "last time you wrote" recap (reconsider-only) is hidden.
-  document.getElementById('future-prior-recap').style.display = 'none';
-  updateFutureContinueState();
-  show('screen-future');
-});
-
-// Back from screen-future → screen-log (or screen-main if reconsidering)
-document.getElementById('btn-back-future').addEventListener('click', () => {
-  if (S.reconsiderAnxietyId) {
-    S.reconsiderAnxietyId = null;
-    show('screen-main');
-  } else {
-    show('screen-log');
-  }
-});
-
-// Continue from screen-future → screen-present (the colour-pick step).
-// Captures the future-self answer.
-document.getElementById('btn-to-present').addEventListener('click', () => {
-  const text = document.getElementById('prior-text').value.trim();
-  if (!text) return;
-  S.selectedPriorAnswer = text;
-  // Reset present-screen state (in case user came back)
-  document.querySelectorAll('#present-options .reflect-option').forEach(b => b.classList.remove('selected'));
-  S.selectedPriorExpectation = null;
-  document.getElementById('btn-save').disabled = true;
-  show('screen-present');
-});
-
-// Back from screen-present → screen-future
-document.getElementById('btn-back-present').addEventListener('click', () => {
-  show('screen-future');
-});
-
-// Live-update Continue button on screen-future (text required)
-document.getElementById('prior-text').addEventListener('input', updateFutureContinueState);
-function updateFutureContinueState() {
-  const text = document.getElementById('prior-text').value.trim();
-  document.getElementById('btn-to-present').disabled = text.length === 0;
-}
-
-// Present-screen colour picker: each click sets the expectation and enables save
-document.querySelectorAll('#present-options .reflect-option').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#present-options .reflect-option').forEach(b => b.classList.remove('selected'));
-    btn.classList.add('selected');
-    S.selectedPriorExpectation = btn.dataset.value;
-    document.getElementById('btn-save').disabled = false;
-  });
-});
-
-// Save: in reconsider mode, append to the existing anxiety; otherwise create
-// a new one.
-document.getElementById('btn-save').addEventListener('click', async () => {
-  const priorAnswer = (S.selectedPriorAnswer || '').trim();
-  if (!priorAnswer) return;
-  const priorExpectation = S.selectedPriorExpectation;
-  if (!priorExpectation) return;
-
-  if (S.reconsiderAnxietyId) {
-    // Reconsider: append to existing entry
-    const target = S.anxieties.find(a => a.id === S.reconsiderAnxietyId);
-    if (target) {
-      target.priorExpectations = target.priorExpectations || [];
-      target.priorAnswers = target.priorAnswers || [];
-      target.priorExpectations.push(priorExpectation);
-      target.priorAnswers.push(priorAnswer);
-      target.priorExpectation = priorExpectation;
-      target.priorAnswer = priorAnswer;
-      persist();
-    }
-    S.reconsiderAnxietyId = null;
-    window.location.reload();
-    return;
-  }
-
-  // Fresh log: requires pendingPos + label + time
-  if (!S.pendingPos) return;
-  const resolvedAt = S.selectedResolvedAt;
-  if (!resolvedAt || resolvedAt <= nowMs()) return;
-  const label = (S.selectedLabel || '').trim();
-  if (!label) return;
-  const createdAt = nowMs();
-  const anxiety = {
-    id: 'a_' + createdAt + '_' + Math.random().toString(36).slice(2,7),
-    lat: S.pendingPos.lat,
-    lng: S.pendingPos.lng,
-    createdAt,
-    resolvedAt,
-    label,                           // required
-    priorExpectation,                // latest of priorExpectations (shadow accessor)
-    priorAnswer,                     // latest of priorAnswers
-    priorExpectations: [priorExpectation],  // array — grows if the user re-does
-    priorAnswers: [priorAnswer],
-    reflection: null,
-    reflectionText: null,
-  };
-  S.anxieties.push(anxiety);
-  persist();
-
-  if (S.shareConsent) {
-    // Await the insert so the page reload below doesn't cancel the in-flight
-    // request. (Fire-and-forget + immediate reload was killing some inserts,
-    // which is why not all entries showed up on the shared map.)
-    try {
-      await supabaseInsertAnxiety(anxiety.lat, anxiety.lng, anxiety.resolvedAt, {
-        priorExpectation: anxiety.priorExpectation,
-        reflection: null,
-      });
-    } catch (e) {
-      console.warn('Share insert failed (entry still saved locally):', e);
-    }
-  }
-
-  window.location.reload();
-});
-
-// Open the reconsider flow: pre-fill what's needed and skip directly to
-// screen-future (the time-capsule step). Keeps the user's existing label
-// and resolved time; just collects a new prior expectation + answer.
-function openReconsiderFlow(anxietyId) {
-  const anxiety = S.anxieties.find(a => a.id === anxietyId);
-  if (!anxiety) return;
-  S.reconsiderAnxietyId = anxietyId;
-  // Pre-fill the wizard state from the existing anxiety so the save handler
-  // can also derive label/time, even though those won't change.
-  S.pendingPos = { lat: anxiety.lat, lng: anxiety.lng };
-  S.selectedResolvedAt = anxiety.resolvedAt;
-  S.selectedLabel = anxiety.label;
-  S.selectedPriorAnswer = null;
-  S.selectedPriorExpectation = null;
-  // Set up the screen-future banner
-  document.getElementById('future-banner-date').textContent = fmtDate(anxiety.resolvedAt);
-  document.getElementById('prior-prompt-text').textContent = drawPrompt();
-  document.getElementById('prior-text').value = '';
-  document.getElementById('btn-to-present').disabled = true;
-  // Show the previous time-capsule answer so the user can build on it.
-  const recap = document.getElementById('future-prior-recap');
-  const priorAnswer = anxiety.priorAnswer ||
-    (anxiety.priorAnswers && anxiety.priorAnswers[anxiety.priorAnswers.length - 1]);
-  if (priorAnswer) {
-    document.getElementById('future-prior-text').textContent = priorAnswer;
-    const priorHex = REFLECT_COLORS[anxiety.priorExpectation] || REFLECT_COLORS.null;
-    document.getElementById('future-prior-swatch').style.background = priorHex;
-    recap.style.display = '';
-  } else {
-    recap.style.display = 'none';
-  }
-  // Reset present-screen
-  document.querySelectorAll('#present-options .reflect-option').forEach(b => b.classList.remove('selected'));
-  document.getElementById('btn-save').disabled = true;
-  show('screen-future');
-}
-
-// ── Modal: consent + about ─────────────────────────────────────
-function openModal(isOnboarding) {
-  document.getElementById('modal-backdrop').classList.add('active');
-  document.getElementById('consent-checkbox').checked = S.shareConsent;
-  document.getElementById('modal-title').textContent =
-    isOnboarding ? 'Welcome to Anchor' : 'Settings';
-  document.getElementById('modal-cancel').style.display = isOnboarding ? 'none' : '';
-  document.getElementById('modal-confirm').textContent = isOnboarding ? 'Continue' : 'Save';
-}
-function closeModal() {
-  document.getElementById('modal-backdrop').classList.add('closing');
-  document.getElementById('modal-backdrop').classList.remove('active');
-  // After dismissing onboarding/settings, check whether any unreflected
-  // resolved anxieties are within reflection range right now.
-  setTimeout(() => {
-    if (typeof checkReflectProximity === 'function') checkReflectProximity();
-  }, 300);
-}
-
-document.getElementById('settings-btn').addEventListener('click', () => {
-  openModal(false);
-});
-document.getElementById('modal-cancel').addEventListener('click', () => {
-  closeModal();
-});
-document.getElementById('modal-confirm').addEventListener('click', () => {
-  S.shareConsent = document.getElementById('consent-checkbox').checked;
-  S.hasOnboarded = true;
-  persistSettings();
-  closeModal();
-});
-
-// ── Map toggle: My / Shared ────────────────────────────────────
-async function setMapMode(mode) {
-  S.mapMode = mode;
-  document.getElementById('map-mine').classList.toggle('active', mode === 'mine');
-  document.getElementById('map-shared').classList.toggle('active', mode === 'shared');
-  if (mode === 'shared' && S.sharedAnxieties.length === 0) {
-    if (!SUPABASE_CONFIGURED) {
-      toast('Shared map not configured yet');
-      return;
-    }
-    toast('Loading shared map…');
-    S.sharedAnxieties = await supabaseFetchAnxieties();
-    if (S.sharedAnxieties.length === 0) {
-      toast('No shared entries yet — be the first!');
-    } else {
-      toast(`Showing ${S.sharedAnxieties.length} shared entries`);
-    }
-  }
-  rebuildColumns();
-  if (typeof checkReflectProximity === 'function') checkReflectProximity();
-}
-document.getElementById('map-mine').addEventListener('click', () => setMapMode('mine'));
-document.getElementById('map-shared').addEventListener('click', () => setMapMode('shared'));
-
-// ── Reflection system ─────────────────────────────────────────
-// After an anxiety has resolved, the user can record how it actually
-// turned out. The mark on the map recolours based on their choice.
-//
-// Reflection happens either:
-//   (a) automatically, when you walk near the spot of an unreflected
-//       resolved anxiety (within 50m), the modal appears for it
-//   (b) explicitly, by tapping a mark in the 3D view
-//
-// Reflections are personal-only — they're stored in the same localStorage
-// blob as the anxiety itself ('anchor-v2'). Shared anxieties never carry
-// reflection state in this version.
-
-const REFLECT_PROXIMITY_M = 50;  // metres — how close you need to be for auto-prompt
-
-// Queue of anxiety IDs waiting to be reflected on (proximity-triggered).
-// When the modal closes after one, the next in the queue is shown.
-let reflectQueue = [];
-let reflectCurrent = null;
-// IDs we've already prompted about in this session (so closing the modal
-// doesn't immediately re-prompt the same one).
-const reflectSeenThisSession = new Set();
-
-function distanceMetres(latA, lngA, latB, lngB) {
-  // Haversine for short distances — good enough at this scale
-  const R = 6371000;
-  const toRad = d => d * Math.PI / 180;
-  const dLat = toRad(latB - latA);
-  const dLng = toRad(lngB - lngA);
-  const a = Math.sin(dLat/2)**2 +
-            Math.cos(toRad(latA)) * Math.cos(toRad(latB)) * Math.sin(dLng/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
-
-// Find personal anxieties that:
-//   - have already resolved (relative to wall-clock time, not simNow)
-//   - have no reflection yet
-//   - are within REFLECT_PROXIMITY_M of the user's current position
-//   - haven't been shown in this session yet
-function findNearbyUnreflected() {
-  if (!S.currentPos) return [];
-  const now = nowMs();
-  return S.anxieties.filter(a =>
-    a.resolvedAt <= now &&
-    !a.reflection &&
-    !reflectSeenThisSession.has(a.id) &&
-    distanceMetres(S.currentPos.lat, S.currentPos.lng, a.lat, a.lng) <= REFLECT_PROXIMITY_M
-  );
-}
-
-// Currently-selected reflection value in the modal (not yet saved).
-let reflectSelected = null;
-
-function openReflectModal(anxietyId) {
-  const anxiety = S.anxieties.find(a => a.id === anxietyId);
-  if (!anxiety) return;
-  reflectCurrent = anxietyId;
-  reflectSeenThisSession.add(anxietyId);
-  // Prefill from any prior reflection so the user can read what they wrote
-  // last time and edit if they want.
-  reflectSelected = anxiety.reflection || null;
-  document.getElementById('reflect-text').value = anxiety.reflectionText || '';
-  // Scope to ONLY the reflect modal's options — not screen-future
-  document.querySelectorAll('#reflect-options .reflect-option').forEach(btn => {
-    btn.classList.toggle('selected', btn.dataset.value === reflectSelected);
-  });
-  // Label pill
-  const labelEl = document.getElementById('reflect-label');
-  if (anxiety.label) {
-    labelEl.textContent = anxiety.label;
-    labelEl.style.display = '';
-  } else {
-    labelEl.style.display = 'none';
-  }
-  // Prior-recap: show the time capsule the user wrote on screen-future when
-  // logging this. Hidden for older anxieties (predating that flow).
-  const recap = document.getElementById('reflect-prior-recap');
-  if (anxiety.priorExpectation || anxiety.priorAnswer) {
-    document.getElementById('reflect-prior-swatch').style.background =
-      REFLECT_COLORS[anxiety.priorExpectation] || REFLECT_COLORS.null;
-    document.getElementById('reflect-prior-text').textContent =
-      anxiety.priorAnswer || '(no answer was recorded)';
-    recap.style.display = '';
-  } else {
-    recap.style.display = 'none';
-  }
-  updateReflectSaveState();
-  document.getElementById('reflect-backdrop').classList.add('active');
-}
-
-function closeReflectModal() {
-  reflectCurrent = null;
-  reflectSelected = null;
-  document.getElementById('reflect-backdrop').classList.remove('active');
-  if (reflectQueue.length > 0) {
-    setTimeout(() => openReflectModal(reflectQueue.shift()), 220);
-  }
-}
-
-// Save is enabled only when BOTH a colour is selected AND there's some text.
-function updateReflectSaveState() {
-  const text = document.getElementById('reflect-text').value.trim();
-  document.getElementById('reflect-save').disabled = !(reflectSelected && text.length > 0);
-}
-
-function saveReflection() {
-  if (!reflectCurrent) return closeReflectModal();
-  const anxiety = S.anxieties.find(a => a.id === reflectCurrent);
-  if (!anxiety) return closeReflectModal();
-  const text = document.getElementById('reflect-text').value.trim();
-  if (!reflectSelected || !text) return;       // shouldn't happen — button is disabled
-  anxiety.reflection = reflectSelected;
-  anxiety.reflectionText = text;
-  persist();
-  // Update the mark's outer (reflection) colour in place
-  setMarkReflection(anxiety.id, reflectSelected);
-  // Push the colour to Supabase so the shared map shows it
-  if (S.shareConsent) {
-    // We re-insert a new row for reflections rather than UPDATE — simpler API,
-    // but it would create a duplicate. Better: simply not send reflection
-    // changes to Supabase for now. Shared marks stay white-outer-ring.
-    // (We chose this earlier — see the conversation notes.)
-  }
-  closeReflectModal();
-}
-
-// Reflect-modal events (scoped to NOT collide with screen-future's options)
-document.querySelectorAll('#reflect-options .reflect-option').forEach(btn => {
-  btn.addEventListener('click', () => {
-    reflectSelected = btn.dataset.value;
-    document.querySelectorAll('#reflect-options .reflect-option').forEach(b => {
-      b.classList.toggle('selected', b === btn);
-    });
-    updateReflectSaveState();
-  });
-});
-document.getElementById('reflect-text').addEventListener('input', updateReflectSaveState);
-document.getElementById('reflect-skip').addEventListener('click', closeReflectModal);
-document.getElementById('reflect-save').addEventListener('click', saveReflection);
-
-// Check proximity now (and call after every GPS update too)
-function checkReflectProximity() {
-  // Only auto-prompt when viewing personal map — shared marks have no
-  // personal reflection to set, and we don't want to surface this UI
-  // while the user is exploring the collective view.
-  if (S.mapMode !== 'mine') return;
-  if (reflectCurrent) return;            // modal already open
-  if (document.getElementById('modal-backdrop').classList.contains('active')) return;  // settings/onboarding open
-  const nearby = findNearbyUnreflected();
-  if (nearby.length === 0) return;
-  reflectQueue = nearby.slice(1).map(a => a.id);
-  openReflectModal(nearby[0].id);
-}
-
-// ── Tap on a mark or column: route to the right modal ──
-// Already-reflected marks → read-only view modal (with Edit button)
-// Unreflected (white) marks → reflection modal directly
-// Active columns → "has this passed already?" confirm
-const reflectRaycaster = new THREE.Raycaster();
-const reflectPointer = new THREE.Vector2();
-document.getElementById('three-canvas').addEventListener('click', e => {
-  if (!camera || S.mapMode !== 'mine') return;   // only personal anxieties are interactive
+document.getElementById('picker').addEventListener('pointerdown', (e) => {
   const rect = e.currentTarget.getBoundingClientRect();
-  reflectPointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-  reflectPointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-  reflectRaycaster.setFromCamera(reflectPointer, camera);
+  movePickerPin(e.clientX - rect.left, e.clientY - rect.top);
+  const onMove = (ev) => {
+    movePickerPin(ev.clientX - rect.left, ev.clientY - rect.top);
+  };
+  const onUp = () => {
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+  };
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+});
 
-  // Check marks first (smaller targets but more specific intent)
-  const visibleMarks = [];
-  for (const m of markMeshes.values()) {
-    if (m.visible) visibleMarks.push(m);
+/* ── Paint canvas ─────────────────────────────────────────────────────── */
+const paintCanvas = document.getElementById('paint-canvas');
+const paintCtx = paintCanvas.getContext('2d');
+let paintStrokes = [];     // accumulated stroke samples for deposit
+let currentTool = 'brush'; // 'brush' or 'erase'
+let isPainting = false;
+
+function clearPaintCanvas() {
+  paintCtx.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
+  paintStrokes = [];
+}
+
+function paintAt(x, y) {
+  // Reject points outside the circular canvas — strokes only count inside
+  // the visible round area, otherwise we'd deposit invisible blobs at the
+  // corners (the CSS clip hides them but the canvas pixels record them).
+  const cx = paintCanvas.width / 2;
+  const cy = paintCanvas.height / 2;
+  const r2 = (x - cx) ** 2 + (y - cy) ** 2;
+  const maxR = (paintCanvas.width / 2);
+  if (r2 > maxR * maxR) return;
+
+  const sz = parseInt(document.getElementById('brush-size').value, 10);
+  if (currentTool === 'erase') {
+    paintCtx.save();
+    paintCtx.globalCompositeOperation = 'destination-out';
+    paintCtx.beginPath();
+    paintCtx.arc(x, y, sz, 0, Math.PI * 2);
+    paintCtx.fill();
+    paintCtx.restore();
+    paintStrokes.push({ x, y, valence: 0, arousal: 0, size: sz, erase: true });
+  } else {
+    const { valence, arousal } = pickerSelToValenceArousal();
+    const [r, g, b] = blendCorners(valence, arousal);
+    paintCtx.fillStyle = `rgba(${r|0}, ${g|0}, ${b|0}, 0.4)`;
+    paintCtx.beginPath();
+    paintCtx.arc(x, y, sz, 0, Math.PI * 2);
+    paintCtx.fill();
+    paintStrokes.push({ x, y, valence, arousal, size: sz, erase: false });
   }
-  const markHits = reflectRaycaster.intersectObjects(visibleMarks, false);
-  if (markHits.length > 0) {
-    const hitId = markHits[0].object.userData.anxietyId;
-    const anxiety = S.anxieties.find(a => a.id === hitId);
-    if (!anxiety) return;
-    reflectSeenThisSession.delete(hitId);
-    if (anxiety.reflection) {
-      openViewModal(hitId);
-    } else {
-      openReflectModal(hitId);
-    }
+}
+
+paintCanvas.addEventListener('pointerdown', (e) => {
+  const rect = paintCanvas.getBoundingClientRect();
+  // Map CSS pixels to canvas pixels (320×320 in both, so 1:1 normally)
+  const cx = (e.clientX - rect.left) * (paintCanvas.width / rect.width);
+  const cy = (e.clientY - rect.top)  * (paintCanvas.height / rect.height);
+  isPainting = true;
+  paintAt(cx, cy);
+});
+paintCanvas.addEventListener('pointermove', (e) => {
+  if (!isPainting) return;
+  const rect = paintCanvas.getBoundingClientRect();
+  const cx = (e.clientX - rect.left) * (paintCanvas.width / rect.width);
+  const cy = (e.clientY - rect.top)  * (paintCanvas.height / rect.height);
+  paintAt(cx, cy);
+});
+window.addEventListener('pointerup', () => { isPainting = false; });
+
+/* ── Tool buttons ─────────────────────────────────────────────────────── */
+document.getElementById('tool-brush').addEventListener('click', () => {
+  currentTool = 'brush';
+  document.getElementById('tool-brush').classList.add('active');
+  document.getElementById('tool-erase').classList.remove('active');
+});
+document.getElementById('tool-erase').addEventListener('click', () => {
+  currentTool = 'erase';
+  document.getElementById('tool-erase').classList.add('active');
+  document.getElementById('tool-brush').classList.remove('active');
+});
+document.getElementById('tool-clear').addEventListener('click', clearPaintCanvas);
+
+/* ── Modal open / save / cancel ───────────────────────────────────────── */
+document.getElementById('btn-log').addEventListener('click', () => {
+  if (!state.userLatLng) {
+    document.getElementById('status').textContent = 'Pick a spot on the map first, or use your GPS.';
     return;
   }
-
-  // No mark hit — check columns (active anxieties). Tapping a column lets
-  // you mark it as already passed earlier than expected, which sinks it
-  // into a mark and opens the reflection modal.
-  const visibleColumns = [];
-  for (const c of columnMeshes.values()) {
-    if (c.visible) visibleColumns.push(c);
+  clearPaintCanvas();
+  movePickerPin(80, 80);       // start at neutral
+  modal.classList.add('show');
+  drawPicker();                // draw it now in case dimensions weren't ready
+});
+document.getElementById('btn-cancel').addEventListener('click', () => {
+  modal.classList.remove('show');
+});
+document.getElementById('btn-save').addEventListener('click', () => {
+  if (paintStrokes.length === 0) {
+    document.getElementById('status').textContent = 'Paint something first.';
+    return;
   }
-  const colHits = reflectRaycaster.intersectObjects(visibleColumns, false);
-  if (colHits.length > 0) {
-    const hitId = colHits[0].object.userData.anxietyId;
-    openEarlyResolveModal(hitId);
-  }
+  const { lat, lng } = state.userLatLng;
+  depositPaintedRegion(lat, lng, paintStrokes);
+  redrawField();
+  updateLocalReading();
+  // Average valence/arousal of the stroke for Supabase
+  let avgV = 0, avgA = 0;
+  for (const s of paintStrokes) { avgV += s.valence; avgA += s.arousal; }
+  avgV /= paintStrokes.length;
+  avgA /= paintStrokes.length;
+  if (SUPABASE_URL && SUPABASE_ANON_KEY) saveEntrySupabase(lat, lng, avgV, avgA);
+  modal.classList.remove('show');
+  document.getElementById('status').textContent =
+    `Entry logged (${paintStrokes.length} strokes).`;
 });
 
-// Helper: hex like '#5fb89a' → 'rgba(95,184,154,a)' so we can use it
-// inline in a CSS gradient with a custom alpha.
-function hexToRgba(hex, alpha) {
-  const m = /^#?([a-f0-9]{6})$/i.exec((hex || '').trim());
-  if (!m) return `rgba(255,255,255,${alpha})`;
-  const r = parseInt(m[1].slice(0, 2), 16);
-  const g = parseInt(m[1].slice(2, 4), 16);
-  const b = parseInt(m[1].slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
+/* ═══════════════════════════════════════════════════════════════════════
+   STARTUP
+   ═══════════════════════════════════════════════════════════════════════ */
+initField();
+if (loadFieldLocal()) {
+  // Loaded from previous session
 }
-
-// ── Read-only view of a reflected mark ──
-let viewCurrent = null;
-
-function openViewModal(anxietyId) {
-  const anxiety = S.anxieties.find(a => a.id === anxietyId);
-  if (!anxiety) return;
-  viewCurrent = anxietyId;
-  // Render the mark thumbnail at the top — the same visual signature as on the map.
-  const thumbCanvas = makeMarkCanvas(markStopsForAnxiety(anxiety));
-  const thumbEl = document.getElementById('view-mark-thumb');
-  thumbEl.style.backgroundImage = `url(${thumbCanvas.toDataURL()})`;
-  thumbEl.style.backgroundSize = 'cover';
-  thumbEl.style.backgroundPosition = 'center';
-  // Label pill
-  const labelEl = document.getElementById('view-anxiety-label');
-  if (anxiety.label) {
-    labelEl.textContent = anxiety.label;
-    labelEl.style.display = '';
-  } else {
-    labelEl.style.display = 'none';
-  }
-
-  // Section 1: What I imagined (prior expectation + answer)
-  const priorSec = document.getElementById('view-section-prior');
-  const priorHex = REFLECT_COLORS[anxiety.priorExpectation] || REFLECT_COLORS.null;
-  if (anxiety.priorExpectation || anxiety.priorAnswer) {
-    priorSec.style.display = '';
-    priorSec.style.background =
-      `linear-gradient(135deg, ${hexToRgba(priorHex, 0.18)}, ${hexToRgba(priorHex, 0.04)})`;
-    priorSec.style.borderColor = hexToRgba(priorHex, 0.35);
-    document.getElementById('view-prior-swatch').style.background = priorHex;
-    const text = (anxiety.priorAnswer || '').trim();
-    const target = document.getElementById('view-prior-text');
-    if (text) {
-      target.textContent = text;
-      target.classList.remove('view-section-empty');
-    } else {
-      target.textContent = '(no answer was recorded)';
-      target.classList.add('view-section-empty');
+drawPicker();   // pre-render the colour picker
+// Draw the small legend canvas
+(function drawLegend(){
+  const lc = document.getElementById('legend-canvas');
+  if (!lc) return;
+  const ctx = lc.getContext('2d');
+  const W = lc.width, H = lc.height;
+  const img = ctx.createImageData(W, H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const valence = (x / (W - 1)) * 2 - 1;
+      const arousal = -((y / (H - 1)) * 2 - 1);
+      const [r, g, b] = blendCorners(valence, arousal);
+      const idx = (y * W + x) * 4;
+      img.data[idx] = r; img.data[idx+1] = g; img.data[idx+2] = b; img.data[idx+3] = 255;
     }
-  } else {
-    priorSec.style.display = 'none';
   }
+  ctx.putImageData(img, 0, 0);
+})();
+redrawField();
+updateLocalReading();
+setInterval(tick, TICK_MS);
 
-  // Section 2: What I found (reflection + note)
-  const reflSec = document.getElementById('view-section-reflection');
-  const reflHex = REFLECT_COLORS[anxiety.reflection] || REFLECT_COLORS.null;
-  if (anxiety.reflection) {
-    reflSec.style.display = '';
-    reflSec.style.background =
-      `linear-gradient(135deg, ${hexToRgba(reflHex, 0.04)}, ${hexToRgba(reflHex, 0.18)})`;
-    reflSec.style.borderColor = hexToRgba(reflHex, 0.35);
-    document.getElementById('view-reflection-swatch').style.background = reflHex;
-    const text = (anxiety.reflectionText || '').trim();
-    const target = document.getElementById('view-reflection-text');
-    if (text) {
-      target.textContent = text;
-      target.classList.remove('view-section-empty');
-    } else {
-      target.textContent = '(no note was left)';
-      target.classList.add('view-section-empty');
-    }
-  } else {
-    reflSec.style.display = 'none';
-  }
-
-  document.getElementById('view-backdrop').classList.add('active');
-}
-function closeViewModal() {
-  viewCurrent = null;
-  document.getElementById('view-backdrop').classList.remove('active');
-}
-document.getElementById('view-close').addEventListener('click', closeViewModal);
-document.getElementById('view-edit').addEventListener('click', () => {
-  const id = viewCurrent;
-  closeViewModal();
-  if (id) setTimeout(() => openReflectModal(id), 180);
-});
-
-// ── List modal: overview of every logged anxiety ──
-// Sectioned into "still ahead" (active, unresolved), "waiting for reflection"
-// (resolved but no reflection yet), and "looked back on" (resolved and
-// reflected). Tapping a row opens an inline detail panel. The reflect-button
-// from the list lets the user reflect on a resolved anxiety even when not
-// near its location.
-
-function openListModal() {
-  renderListModal();
-  document.getElementById('list-backdrop').classList.add('active');
-}
-function closeListModal() {
-  document.getElementById('list-backdrop').classList.remove('active');
-}
-
-function fmtDuration(start, end) {
-  const startTxt = fmtDate(start);
-  const endTxt = fmtDate(end);
-  return `${startTxt} → ${endTxt}`;
-}
-
-// Render the full list view from S.anxieties. Called whenever the modal opens
-// (after any change to data, e.g. reflections from inside this view).
-function renderListModal() {
-  const now = nowMs();
-  const all = S.anxieties.slice();
-  // Sort each section by relevant criteria — newest first within sections.
-  const stillAhead   = all.filter(a => a.resolvedAt > now)
-                          .sort((a, b) => a.resolvedAt - b.resolvedAt);
-  const waitingRefl  = all.filter(a => a.resolvedAt <= now && !a.reflection)
-                          .sort((a, b) => b.resolvedAt - a.resolvedAt);
-  const lookedBack   = all.filter(a => a.resolvedAt <= now && a.reflection)
-                          .sort((a, b) => b.resolvedAt - a.resolvedAt);
-
-  const container = document.getElementById('list-sections');
-  container.innerHTML = '';
-  container.appendChild(renderListSection('Still ahead',         stillAhead,  'ahead'));
-  container.appendChild(renderListSection('Waiting for reflection', waitingRefl, 'wait'));
-  container.appendChild(renderListSection('Looked back on',      lookedBack,  'done'));
-}
-
-function renderListSection(title, anxieties, kind) {
-  const wrap = document.createElement('div');
-  const head = document.createElement('div');
-  head.className = 'list-section-title';
-  head.textContent = `${title} (${anxieties.length})`;
-  wrap.appendChild(head);
-
-  if (anxieties.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'list-section-empty';
-    empty.textContent = kind === 'ahead' ? 'Nothing on the horizon right now.'
-                       : kind === 'wait' ? 'No moments waiting on your reflection.'
-                                         : 'You haven\'t reflected on anything yet.';
-    wrap.appendChild(empty);
-    return wrap;
-  }
-
-  const items = document.createElement('div');
-  items.className = 'list-items';
-  for (const a of anxieties) {
-    items.appendChild(renderListItem(a, kind));
-  }
-  wrap.appendChild(items);
-  return wrap;
-}
-
-function renderListItem(anxiety, kind) {
-  const row = document.createElement('button');
-  row.className = 'list-item';
-  row.type = 'button';
-
-  // Mark thumbnail — matches the visual on the map.
-  const canvas = makeMarkCanvas(markStopsForAnxiety(anxiety));
-  const thumb = document.createElement('div');
-  thumb.className = 'list-item-mark';
-  thumb.style.backgroundImage = `url(${canvas.toDataURL()})`;
-  thumb.style.backgroundSize = 'cover';
-  thumb.style.backgroundPosition = 'center';
-  row.appendChild(thumb);
-
-  // Body: title (label) + meta (duration) + detail panel
-  const body = document.createElement('div');
-  body.className = 'list-item-body';
-
-  const title = document.createElement('div');
-  title.className = 'list-item-title';
-  title.textContent = anxiety.label || '(no label)';
-  body.appendChild(title);
-
-  const meta = document.createElement('div');
-  meta.className = 'list-item-meta';
-  meta.textContent = fmtDuration(anxiety.createdAt, anxiety.resolvedAt);
-  body.appendChild(meta);
-
-  // Detail panel (initially hidden via CSS)
-  const detail = document.createElement('div');
-  detail.className = 'list-item-detail';
-
-  // Prior section(s) — show every expectation in chronological order so the
-  // user can see how their projection evolved if they re-did.
-  const priors = (anxiety.priorExpectations && anxiety.priorExpectations.length > 0)
-    ? anxiety.priorExpectations
-    : (anxiety.priorExpectation ? [anxiety.priorExpectation] : []);
-  const priorAnswers = (anxiety.priorAnswers && anxiety.priorAnswers.length > 0)
-    ? anxiety.priorAnswers
-    : (anxiety.priorAnswer ? [anxiety.priorAnswer] : []);
-  for (let i = 0; i < priors.length; i++) {
-    const hex = REFLECT_COLORS[priors[i]] || REFLECT_COLORS.null;
-    const block = document.createElement('div');
-    block.className = 'list-detail-block';
-    const label = document.createElement('div');
-    label.className = 'list-detail-label';
-    const heading = priors.length === 1 ? 'What I imagined' :
-                    i === 0 ? 'What I imagined' :
-                    `What I imagined (revised, take ${i + 1})`;
-    label.innerHTML =
-      `<span class="list-detail-swatch" style="background:${hex}"></span>` +
-      `<span>${heading}</span>`;
-    block.appendChild(label);
-    if (priorAnswers[i]) {
-      const text = document.createElement('div');
-      text.className = 'list-detail-text';
-      text.textContent = priorAnswers[i];
-      block.appendChild(text);
-    }
-    detail.appendChild(block);
-  }
-
-  // Reflection section (only if reflected)
-  if (anxiety.reflection) {
-    const reflHex = REFLECT_COLORS[anxiety.reflection] || REFLECT_COLORS.null;
-    const block = document.createElement('div');
-    block.className = 'list-detail-block';
-    const label = document.createElement('div');
-    label.className = 'list-detail-label';
-    label.innerHTML =
-      `<span class="list-detail-swatch" style="background:${reflHex}"></span>` +
-      `<span>What I found</span>`;
-    block.appendChild(label);
-    if (anxiety.reflectionText) {
-      const text = document.createElement('div');
-      text.className = 'list-detail-text';
-      text.textContent = anxiety.reflectionText;
-      block.appendChild(text);
-    }
-    detail.appendChild(block);
-  }
-
-  // Action button: only for items waiting for reflection — opens the
-  // Action buttons by section
-  const actions = document.createElement('div');
-  actions.style.display = 'flex';
-  actions.style.flexWrap = 'wrap';
-  actions.style.gap = '8px';
-  actions.style.marginTop = '10px';
-
-  if (kind === 'ahead') {
-    // Active column: let the user reconsider their expectation, or mark it
-    // as already past (early-resolve into the reflection flow).
-    const reconsider = document.createElement('button');
-    reconsider.className = 'list-item-action';
-    reconsider.type = 'button';
-    reconsider.textContent = 'Reconsider';
-    reconsider.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeListModal();
-      setTimeout(() => openReconsiderFlow(anxiety.id), 180);
-    });
-    actions.appendChild(reconsider);
-
-    const pastIt = document.createElement('button');
-    pastIt.className = 'list-item-action';
-    pastIt.type = 'button';
-    pastIt.style.background = 'transparent';
-    pastIt.style.color = 'var(--accent)';
-    pastIt.style.border = '1px solid var(--accent)';
-    pastIt.textContent = "I'm already past it";
-    pastIt.addEventListener('click', (e) => {
-      e.stopPropagation();
-      reflectSeenThisSession.delete(anxiety.id);
-      // Set resolvedAt to now, persist, rebuild, open reflect modal
-      const target = S.anxieties.find(a => a.id === anxiety.id);
-      if (target) {
-        target.resolvedAt = nowMs();
-        persist();
-        rebuildColumns();
-      }
-      closeListModal();
-      setTimeout(() => openReflectModal(anxiety.id), 180);
-    });
-    actions.appendChild(pastIt);
-  } else if (kind === 'wait') {
-    const act = document.createElement('button');
-    act.className = 'list-item-action';
-    act.type = 'button';
-    act.textContent = 'Reflect now';
-    act.addEventListener('click', (e) => {
-      e.stopPropagation();
-      reflectSeenThisSession.delete(anxiety.id);
-      closeListModal();
-      setTimeout(() => openReflectModal(anxiety.id), 180);
-    });
-    actions.appendChild(act);
-  } else if (kind === 'done') {
-    const act = document.createElement('button');
-    act.className = 'list-item-action';
-    act.type = 'button';
-    act.textContent = 'Edit reflection';
-    act.addEventListener('click', (e) => {
-      e.stopPropagation();
-      reflectSeenThisSession.delete(anxiety.id);
-      closeListModal();
-      setTimeout(() => openReflectModal(anxiety.id), 180);
-    });
-    actions.appendChild(act);
-  }
-
-  if (actions.children.length > 0) detail.appendChild(actions);
-
-  body.appendChild(detail);
-  row.appendChild(body);
-
-  // Chevron
-  const chev = document.createElement('div');
-  chev.className = 'list-item-chevron';
-  chev.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>';
-  row.appendChild(chev);
-
-  // Toggle the detail panel on row click
-  row.addEventListener('click', () => {
-    row.classList.toggle('expanded');
-  });
-
-  return row;
-}
-
-document.getElementById('list-btn').addEventListener('click', openListModal);
-document.getElementById('list-close').addEventListener('click', closeListModal);
-
-// ── Early-resolve flow ──
-// Tapping an active column opens this small modal. Confirming sets
-// resolvedAt = now (which immediately sinks the column and shows the mark),
-// then opens the reflection modal so you can record how it actually went.
-let earlyCurrent = null;
-function openEarlyResolveModal(anxietyId) {
-  earlyCurrent = anxietyId;
-  const anxiety = S.anxieties.find(a => a.id === anxietyId);
-  const labelEl = document.getElementById('early-label');
-  if (anxiety && anxiety.label) {
-    labelEl.textContent = anxiety.label;
-    labelEl.style.display = '';
-  } else {
-    labelEl.style.display = 'none';
-  }
-  document.getElementById('early-backdrop').classList.add('active');
-}
-function closeEarlyResolveModal() {
-  earlyCurrent = null;
-  document.getElementById('early-backdrop').classList.remove('active');
-}
-document.getElementById('early-cancel').addEventListener('click', closeEarlyResolveModal);
-document.getElementById('early-confirm').addEventListener('click', () => {
-  if (!earlyCurrent) return closeEarlyResolveModal();
-  const anxiety = S.anxieties.find(a => a.id === earlyCurrent);
-  const id = earlyCurrent;
-  if (anxiety) {
-    anxiety.resolvedAt = nowMs();
-    reflectSeenThisSession.delete(id);
-    persist();
-    rebuildColumns();
-  }
-  closeEarlyResolveModal();
-  if (id) setTimeout(() => openReflectModal(id), 180);
-});
-document.getElementById('early-reconsider').addEventListener('click', () => {
-  const id = earlyCurrent;
-  closeEarlyResolveModal();
-  if (id) setTimeout(() => openReconsiderFlow(id), 180);
-});
-
-// ── Extend flow ("This isn't over yet") ──
-// Opens from the reflect modal. Picks a duration to add to resolvedAt,
-// then closes both modals. The column springs back up.
-let extendCurrent = null;
-function openExtendModal(anxietyId) {
-  extendCurrent = anxietyId;
-  document.getElementById('extend-backdrop').classList.add('active');
-}
-function closeExtendModal() {
-  extendCurrent = null;
-  document.getElementById('extend-backdrop').classList.remove('active');
-}
-document.getElementById('extend-cancel').addEventListener('click', closeExtendModal);
-document.querySelectorAll('.extend-option').forEach(btn => {
-  btn.addEventListener('click', () => {
-    if (!extendCurrent) return closeExtendModal();
-    const anxiety = S.anxieties.find(a => a.id === extendCurrent);
-    if (anxiety) {
-      const amount = parseInt(btn.dataset.amount);
-      const unit = btn.dataset.unit;
-      // Add the extension to whichever is later: resolvedAt or now.
-      // (If the column had already resolved before extending, we want the
-      // new resolvedAt to be in the future relative to now, not relative
-      // to the old resolved time which may be in the past.)
-      const base = Math.max(anxiety.resolvedAt, nowMs());
-      anxiety.resolvedAt = addDuration(base, amount, unit);
-      // Clear any prior reflection — the event is "active" again
-      anxiety.reflection = null;
-      anxiety.reflectionText = null;
-      reflectSeenThisSession.delete(anxiety.id);
-      persist();
-      rebuildColumns();
-    }
-    closeExtendModal();
-    closeReflectModal();
-  });
-});
-
-// Wire up the "This isn't over yet" link inside the reflect modal
-document.getElementById('reflect-not-over').addEventListener('click', () => {
-  const id = reflectCurrent;
-  if (!id) return;
-  // Don't close the reflect modal yet — the extend modal stacks on top.
-  // After extend is done, both modals close together.
-  openExtendModal(id);
-});
-
-// We want to auto-check proximity right after the first GPS fix, and then
-// every few seconds in case the user has been still and walks somewhere.
-// The interval is cheap (just a few hundred meters check) and avoids needing
-// to splice into the existing GPS handler.
-setInterval(checkReflectProximity, 5000);
-
-// ── First-launch onboarding ────────────────────────────────────
-hydrateSettings();
-if (!S.hasOnboarded) {
-  // Show modal once everything else has rendered
-  setTimeout(() => openModal(true), 200);
-}
+// Fetch live wind from OpenWeatherMap if configured, then refresh every 10 min
+fetchLiveWind();
+setInterval(fetchLiveWind, 600000);
 </script>
 </body>
 </html>
