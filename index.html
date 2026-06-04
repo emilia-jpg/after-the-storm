@@ -26,6 +26,21 @@
   /* Map */
   #map { flex: 1; background: #ffffff; }
 
+  /* Timeline panel */
+  .timeline {
+    background: rgba(0,0,0,0.02);
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 4px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .timeline input[type=range] {
+    width: 100%;
+  }
+
   /* Bottom controls */
   .controls {
     padding: 14px 18px;
@@ -253,7 +268,7 @@
 <body>
 <header>
   <h1>Emotional Weather — Vienna</h1>
-  <div class="sub">Paint your local weather: light, calm, heavy, or turbulent. It drifts with the real wind.</div>
+  <div class="sub">Paint your local weather: light, calm, heavy, or turbulent. Scrub the timeline to see past or future weather.</div>
 </header>
 
 <div id="map"></div>
@@ -275,9 +290,29 @@
     <button id="btn-locate">📍 Use my location</button>
     <div class="status" id="status">Click a spot on the map, or use your GPS.</div>
   </div>
+
+  <!-- Timeline: past ← now → future -->
+  <div class="timeline">
+    <div class="row" style="margin-bottom: 4px;">
+      <div class="status" id="timeline-label" style="flex:1; text-align:center; font-weight: 500;">now</div>
+    </div>
+    <div class="row">
+      <input type="range" id="timeline-slider" min="-180" max="180" value="0" step="5"
+             style="flex:1; accent-color: #2a6fc1">
+    </div>
+    <div class="row" style="font-size: 11px; color: #6a6a6d;">
+      <span>−3 h (past)</span>
+      <span style="margin-left:auto;">now</span>
+      <span style="margin-left:auto;">+3 h (forecast)</span>
+    </div>
+    <div class="row">
+      <div class="status" id="timeline-reading">Forecast: —</div>
+    </div>
+  </div>
+
   <div class="row">
     <div class="status">
-      Exhibition site: <span id="exhibit-coords"></span> ·
+      Weather station ·
       Local reading: <span id="local-reading">—</span> ·
       Wind: <span id="wind-status">default (set OWM_API_KEY for live)</span> ·
       <a href="https://openweathermap.org" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline">weather data: OpenWeather</a>
@@ -718,14 +753,12 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png
 // Exhibition marker
 const exhibitIcon = L.divIcon({
   className: '',
-  html: '<div class="exhibit-pin" title="Exhibition site"></div>',
+  html: '<div class="exhibit-pin" title="Weather station"></div>',
   iconSize: [18, 18], iconAnchor: [9, 9],
 });
 L.marker([EXHIBITION.lat, EXHIBITION.lng], { icon: exhibitIcon })
   .addTo(map)
-  .bindPopup('Exhibition site');
-document.getElementById('exhibit-coords').textContent =
-  `${EXHIBITION.lat.toFixed(4)}, ${EXHIBITION.lng.toFixed(4)}`;
+  .bindPopup('Weather station');
 
 // ── Colour space utilities (sRGB ↔ Lab ↔ LCh) ──
 // We blend in LCh space — perceptually uniform, so transitions between
@@ -822,9 +855,9 @@ function labToRgb(L, a, b) {
 // Pre-compute Lab for the four corners. We blend in Lab — perceptually
 // uniform AND Cartesian, so there's no hue-wraparound discontinuity that
 // LCh interpolation can produce on a 2D bilinear blend.
-const CORNER_LIGHT     = [110, 230, 130];   // vivid spring green
+const CORNER_LIGHT     = [250, 200,  80];   // saturated warm amber
 const CORNER_TURBULENT = [180,  60, 200];   // punchy magenta-violet
-const CORNER_CALM      = [250, 200,  80];   // saturated warm amber
+const CORNER_CALM      = [110, 230, 130];   // vivid spring green
 const CORNER_HEAVY     = [ 30,  50, 150];   // deep saturated blue
 const CORNER_LIGHT_LAB     = rgbToLab(...CORNER_LIGHT);
 const CORNER_TURBULENT_LAB = rgbToLab(...CORNER_TURBULENT);
@@ -915,6 +948,12 @@ ImgOverlay.addTo(map);
 // rendered at high resolution.
 
 function redrawField() {
+  // If the user is scrubbing through past/future, do not overwrite their view
+  // with the live state. The live simulation keeps ticking in the background;
+  // we just don't redraw the map while the timeline is offset from "now".
+  if (typeof timelineOffsetMinutes !== 'undefined' && timelineOffsetMinutes !== 0) {
+    return;
+  }
   const img = fieldCtx.createImageData(RENDER_SIZE, RENDER_SIZE);
   // For each output pixel, compute the (sub-cell) grid coords and
   // bilinearly sample both channels, then convert to LCh-blended colour.
@@ -1165,6 +1204,258 @@ document.getElementById('btn-save').addEventListener('click', () => {
   modal.classList.remove('show');
   document.getElementById('status').textContent =
     `Entry logged (${paintStrokes.length} strokes).`;
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TIMELINE — past ↔ now ↔ future
+   ───────────────────────────────────────────────────────────────────────
+   The main map shows a *time-shifted* view of the field:
+   - offset = 0 minutes  → the live field (updated by tick())
+   - offset > 0          → projection: the live field run forward N ticks
+                           through the same diffuse / advect / decay math
+   - offset < 0          → historical: a synthesized "typical weather at
+                           this time of day" field. With enough real data
+                           this would be an average of past entries at the
+                           matching hour; until that exists, we use a
+                           structured mock to illustrate the concept.
+
+   The slider position is stored in timelineOffsetMinutes. Whenever the
+   slider moves OR the simulation ticks, we redraw the map according to
+   the offset. Live tick keeps running in the background regardless of
+   what the user is viewing.
+   ═══════════════════════════════════════════════════════════════════════ */
+let timelineOffsetMinutes = 0;
+
+/* ── Forward projection (re-uses live simulation math on copies) ── */
+function projectField(minutes) {
+  const ticks = Math.round(minutes * 60 / (TICK_MS / 1000));
+  let v = new Float32Array(state.valence);
+  let a = new Float32Array(state.arousal);
+  // Freeze arousal at t=0 for the diffusion-rate lookup (turbulent stays turbulent)
+  const arousalSnapshot = new Float32Array(state.arousal);
+
+  function diffuseCopy(channel, baseAmount) {
+    const next = new Float32Array(channel.length);
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        let sum = 0, n = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || nx >= GRID_SIZE || ny < 0 || ny >= GRID_SIZE) continue;
+            sum += channel[ny * GRID_SIZE + nx];
+            n++;
+          }
+        }
+        const avg = sum / n;
+        const ar = arousalSnapshot[y * GRID_SIZE + x];
+        const arN = Math.max(0, Math.min(1, (ar + 0.5) / 1.5));
+        const localAmount = baseAmount * (0.4 + arN * 2.1);
+        const amt = Math.min(0.9, localAmount);
+        next[y * GRID_SIZE + x] = channel[y * GRID_SIZE + x] * (1 - amt) + avg * amt;
+      }
+    }
+    return next;
+  }
+  function advectCopy(channel, dx, dy) {
+    const next = new Float32Array(channel.length);
+    function sample(x, y) {
+      const xc = Math.max(0, Math.min(GRID_SIZE - 1, x));
+      const yc = Math.max(0, Math.min(GRID_SIZE - 1, y));
+      return channel[yc * GRID_SIZE + xc];
+    }
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        const sx = x - dx, sy = y - dy;
+        const x0 = Math.floor(sx), y0 = Math.floor(sy);
+        const fx = sx - x0, fy = sy - y0;
+        const c00 = sample(x0, y0),     c10 = sample(x0+1, y0);
+        const c01 = sample(x0, y0+1),   c11 = sample(x0+1, y0+1);
+        const top = c00 * (1-fx) + c10 * fx;
+        const bot = c01 * (1-fx) + c11 * fx;
+        next[y * GRID_SIZE + x] = top * (1-fy) + bot * fy;
+      }
+    }
+    return next;
+  }
+  for (let t = 0; t < ticks; t++) {
+    v = diffuseCopy(v, DIFFUSION);
+    a = diffuseCopy(a, DIFFUSION);
+    v = advectCopy(v, WIND_DIR.dx * WIND_STRENGTH, WIND_DIR.dy * WIND_STRENGTH);
+    a = advectCopy(a, WIND_DIR.dx * WIND_STRENGTH, WIND_DIR.dy * WIND_STRENGTH);
+    for (let i = 0; i < v.length; i++) {
+      v[i] *= (1 - DECAY);
+      a[i] *= (1 - DECAY);
+    }
+  }
+  return { valence: v, arousal: a };
+}
+
+/* ── Historical mock data ──────────────────────────────────────────────
+   Generates a synthetic "typical weather at hour H, day D" field. Real
+   data would replace this when enough entries are logged across many
+   time slots. The mock has structure baked in:
+     - Mornings (5-10 am) tend to be calmer (lower arousal, mildly positive
+       valence)
+     - Late afternoon / evening (17-21) tends slightly more turbulent (rush
+       hour energy)
+     - Late nights (23-4) tend heavier (lower valence, lower arousal)
+     - Weekends differ — calmer mornings, more variable evenings
+     - A few "weather blobs" placed at varying locations across the city,
+       seeded so each (hour, day) gives the same field — i.e. "typical
+       Monday morning" is consistent across multiple views
+   ─────────────────────────────────────────────────────────────────────── */
+function historicalField(targetDate) {
+  const hour = targetDate.getHours();
+  const dayOfWeek = targetDate.getDay();   // 0 = Sunday, 6 = Saturday
+  const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+
+  // Seeded pseudo-random for reproducibility per (hour, day)
+  let seed = hour * 1009 + dayOfWeek * 53;
+  function rand() {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  }
+
+  // Decide the day's general mood from hour
+  let baseValence, baseArousal;
+  if (hour >= 5 && hour < 10) {
+    baseValence = isWeekend ? 0.45 : 0.25;
+    baseArousal = -0.35;
+  } else if (hour >= 10 && hour < 17) {
+    baseValence = 0.15;
+    baseArousal = isWeekend ? -0.1 : 0.1;
+  } else if (hour >= 17 && hour < 22) {
+    baseValence = isWeekend ? 0.25 : -0.15;
+    baseArousal = isWeekend ? 0.25 : 0.45;
+  } else {
+    baseValence = -0.3;
+    baseArousal = -0.4;
+  }
+
+  // Initialize empty fields
+  const v = new Float32Array(GRID_SIZE * GRID_SIZE);
+  const a = new Float32Array(GRID_SIZE * GRID_SIZE);
+
+  // Drop 6-12 blobs scattered across the grid with values varying around
+  // the base mood. Each blob has its own slight offset, so the field is
+  // varied not uniform.
+  const numBlobs = 6 + Math.floor(rand() * 7);
+  for (let i = 0; i < numBlobs; i++) {
+    const cx = rand() * GRID_SIZE;
+    const cy = rand() * GRID_SIZE;
+    const sigma = 6 + rand() * 12;     // blob radius in cells
+    const dV = baseValence + (rand() - 0.5) * 0.4;
+    const dA = baseArousal + (rand() - 0.5) * 0.4;
+    const peak = 0.3 + rand() * 0.5;
+    const radius = Math.ceil(sigma * 2.5);
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const x = Math.floor(cx + dx), y = Math.floor(cy + dy);
+        if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) continue;
+        const r2 = dx*dx + dy*dy;
+        const w = Math.exp(-r2 / (2 * sigma * sigma)) * peak;
+        v[y * GRID_SIZE + x] += dV * w;
+        a[y * GRID_SIZE + x] += dA * w;
+      }
+    }
+  }
+  // Clamp
+  for (let i = 0; i < v.length; i++) {
+    v[i] = Math.max(-1.2, Math.min(1.2, v[i]));
+    a[i] = Math.max(-1.2, Math.min(1.2, a[i]));
+  }
+  return { valence: v, arousal: a };
+}
+
+/* ── Unified renderer for the main map ── */
+function renderAtOffset(offsetMinutes) {
+  let v, a;
+  if (offsetMinutes === 0) {
+    // Live field
+    v = state.valence;
+    a = state.arousal;
+  } else if (offsetMinutes > 0) {
+    // Forecast — project forward
+    const projected = projectField(offsetMinutes);
+    v = projected.valence;
+    a = projected.arousal;
+  } else {
+    // Historical — synthesize typical weather at the target past time
+    const target = new Date(Date.now() + offsetMinutes * 60 * 1000);
+    const hist = historicalField(target);
+    v = hist.valence;
+    a = hist.arousal;
+  }
+
+  // Render to fieldCanvas the same way redrawField does, but using the
+  // chosen fields rather than state directly.
+  const img = fieldCtx.createImageData(RENDER_SIZE, RENDER_SIZE);
+  for (let py = 0; py < RENDER_SIZE; py++) {
+    const gy = GRID_SIZE - 1 - (py / RENDER_SCALE);
+    for (let px = 0; px < RENDER_SIZE; px++) {
+      const gx = px / RENDER_SCALE;
+      const vv = sampleField(v, gx, gy);
+      const aa = sampleField(a, gx, gy);
+      const [r, g, b, alpha] = cellColor(vv, aa);
+      const idx = (py * RENDER_SIZE + px) * 4;
+      img.data[idx] = r; img.data[idx+1] = g; img.data[idx+2] = b; img.data[idx+3] = alpha;
+    }
+  }
+  fieldCtx.putImageData(img, 0, 0);
+  ImgOverlay.setUrl(fieldCanvas.toDataURL());
+
+  // Update the reading-at-venue for the chosen field
+  const [c, r] = latLngToCell(EXHIBITION.lat, EXHIBITION.lng);
+  const vAt = v[r * GRID_SIZE + c];
+  const aAt = a[r * GRID_SIZE + c];
+  const intensity = Math.sqrt(vAt*vAt + aAt*aAt);
+  let label;
+  if (intensity < 0.15) label = 'neutral';
+  else {
+    const corners = [
+      { name: 'light',     v: +1, a: +1 },
+      { name: 'turbulent', v: -1, a: +1 },
+      { name: 'calm',      v: +1, a: -1 },
+      { name: 'heavy',     v: -1, a: -1 },
+    ];
+    let nearest = corners[0], minD = Infinity;
+    for (const cnr of corners) {
+      const d = (cnr.v - vAt) ** 2 + (cnr.a - aAt) ** 2;
+      if (d < minD) { minD = d; nearest = cnr; }
+    }
+    label = (intensity < 0.4 ? 'slightly ' : '') + nearest.name;
+  }
+  const tlReading = document.getElementById('timeline-reading');
+  if (tlReading) {
+    let prefix;
+    if (offsetMinutes === 0) prefix = 'Now';
+    else if (offsetMinutes > 0) prefix = 'Forecast';
+    else prefix = 'Past';
+    tlReading.textContent = `${prefix}: ${label} (v=${vAt.toFixed(2)}, a=${aAt.toFixed(2)})`;
+  }
+}
+
+/* ── Slider handler (debounced for performance) ── */
+const timelineSlider = document.getElementById('timeline-slider');
+const timelineLabel = document.getElementById('timeline-label');
+let _scrubTimer = null;
+function formatOffsetLabel(min) {
+  if (min === 0) return 'now';
+  const abs = Math.abs(min);
+  const sign = min > 0 ? '+' : '−';
+  if (abs < 60) return `${sign}${abs} min`;
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  return m === 0 ? `${sign}${h} h` : `${sign}${h} h ${m} min`;
+}
+timelineSlider.addEventListener('input', () => {
+  const min = parseInt(timelineSlider.value, 10);
+  timelineOffsetMinutes = min;
+  timelineLabel.textContent = formatOffsetLabel(min);
+  // Debounce the heavy render so dragging the slider stays smooth
+  clearTimeout(_scrubTimer);
+  _scrubTimer = setTimeout(() => renderAtOffset(min), 60);
 });
 
 /* ═══════════════════════════════════════════════════════════════════════
