@@ -314,8 +314,8 @@
     <div class="status">
       Weather station ·
       Local reading: <span id="local-reading">—</span> ·
-      Wind: <span id="wind-status">default (set OWM_API_KEY for live)</span> ·
-      <a href="https://openweathermap.org" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline">weather data: OpenWeather</a>
+      Wind: <span id="wind-status">default</span>
+      <a id="owm-attribution" href="https://openweathermap.org" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline; display: none"> · weather data: OpenWeather</a>
     </div>
   </div>
 </div>
@@ -390,7 +390,7 @@
    CONFIG
    ═══════════════════════════════════════════════════════════════════════ */
 const VIENNA_CENTER = { lat: 48.2082, lng: 16.3738 };
-const EXHIBITION    = { lat: 48.2082, lng: 16.3738 };   // set this to the actual venue
+const EXHIBITION    = { lat: 48.20809265694431, lng: 16.382950803979714 };   // weather station location
 const HALF_LAT = 0.20;    // ±0.20° lat
 const HALF_LNG = 0.30;    // ±0.30° lng
 const GRID_SIZE = 256;    // 256x256 cells over the bounding box (~170m/cell)
@@ -424,6 +424,13 @@ const state = {
   entries: [],
   userLatLng: null,
   pendingLatLng: null,
+  // Timeline: a continuous, time-coherent list of all entries (mock + real)
+  // with birth times. Used to render the timeline view at any offset by
+  // drifting and decaying entries individually. Does NOT affect the live
+  // field / Supabase / TouchDesigner — those continue to read the live
+  // accumulated state. This is purely the visualization layer for scrubbing.
+  // Each entry: { lat, lng, valence, arousal, sigmaCells, birthTimeMs }
+  timelineEntries: [],
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -643,9 +650,12 @@ async function fetchLiveWind() {
     // legible during storms.
     WIND_STRENGTH = Math.max(0.27, Math.min(3.2, spdMs * 0.32));
     updateWindStatus(`live · ${spdMs.toFixed(1)} m/s from ${describeDir(fromDeg)}`);
+    // Show OWM attribution since we're actually using their data
+    const attr = document.getElementById('owm-attribution');
+    if (attr) attr.style.display = 'inline';
   } catch (e) {
     console.warn('OWM fetch failed', e);
-    updateWindStatus('default (OWM unavailable)');
+    updateWindStatus('default');
   }
 }
 function describeDir(deg) {
@@ -947,6 +957,20 @@ ImgOverlay.addTo(map);
 // Smooth bilinear scaling (default), since the canvas is now already
 // rendered at high resolution.
 
+// Edge-mask: returns 1.0 in the interior of the bounding box and softly
+// fades to 0 near the edges. Used to feather the alpha so weather blobs
+// near the grid boundary don't appear sharply cut off.
+function edgeMask(gx, gy) {
+  const margin = GRID_SIZE * 0.10;    // fade band width in cells (~10% of bounds)
+  const dxEdge = Math.min(gx, GRID_SIZE - 1 - gx);
+  const dyEdge = Math.min(gy, GRID_SIZE - 1 - gy);
+  const d = Math.min(dxEdge, dyEdge);
+  if (d >= margin) return 1.0;
+  if (d <= 0) return 0.0;
+  const t = d / margin;
+  return t * t * (3 - 2 * t);   // smoothstep
+}
+
 function redrawField() {
   // If the user is scrubbing through past/future, do not overwrite their view
   // with the live state. The live simulation keeps ticking in the background;
@@ -955,22 +979,19 @@ function redrawField() {
     return;
   }
   const img = fieldCtx.createImageData(RENDER_SIZE, RENDER_SIZE);
-  // For each output pixel, compute the (sub-cell) grid coords and
-  // bilinearly sample both channels, then convert to LCh-blended colour.
   for (let py = 0; py < RENDER_SIZE; py++) {
-    // Flip Y for image (north up). Map py [0..RENDER_SIZE) to grid-Y
-    // (GRID_SIZE-1..0) so the north of Vienna appears at the top.
-    const gy = GRID_SIZE - 1 - (py / RENDER_SCALE);   // floating
+    const gy = GRID_SIZE - 1 - (py / RENDER_SCALE);
     for (let px = 0; px < RENDER_SIZE; px++) {
       const gx = px / RENDER_SCALE;
       const v = sampleField(state.valence, gx, gy);
       const a = sampleField(state.arousal, gx, gy);
       const [r, g, b, alpha] = cellColor(v, a);
+      const edge = edgeMask(gx, gy);
       const idx = (py * RENDER_SIZE + px) * 4;
       img.data[idx]   = r;
       img.data[idx+1] = g;
       img.data[idx+2] = b;
-      img.data[idx+3] = alpha;
+      img.data[idx+3] = alpha * edge;
     }
   }
   fieldCtx.putImageData(img, 0, 0);
@@ -1201,6 +1222,15 @@ document.getElementById('btn-save').addEventListener('click', () => {
   avgV /= paintStrokes.length;
   avgA /= paintStrokes.length;
   if (SUPABASE_URL && SUPABASE_ANON_KEY) saveEntrySupabase(lat, lng, avgV, avgA);
+  // Also add to timeline so the visitor sees their own contribution drift
+  // forward when scrubbing into the future.
+  addTimelineEntry({
+    lat, lng,
+    valence: avgV,
+    arousal: avgA,
+    sigmaCells: 6,
+    birthTimeMs: Date.now(),
+  });
   modal.classList.remove('show');
   document.getElementById('status').textContent =
     `Entry logged (${paintStrokes.length} strokes).`;
@@ -1210,14 +1240,14 @@ document.getElementById('btn-save').addEventListener('click', () => {
    TIMELINE — past ↔ now ↔ future
    ───────────────────────────────────────────────────────────────────────
    The main map shows a *time-shifted* view of the field:
-   - offset = 0 minutes  → the live field (updated by tick())
-   - offset > 0          → projection: the live field run forward N ticks
-                           through the same diffuse / advect / decay math
-   - offset < 0          → historical: a synthesized "typical weather at
-                           this time of day" field. With enough real data
-                           this would be an average of past entries at the
-                           matching hour; until that exists, we use a
-                           structured mock to illustrate the concept.
+   - offset = 0 minutes  → the live accumulated field (updated by tick())
+                           — this is what Supabase + TouchDesigner see.
+   - offset ≠ 0          → render from the parallel timeline-entry list,
+                           where each entry has a birth time and is
+                           individually drifted/decayed at the chosen
+                           offset. Mock entries are pre-seeded across
+                           ±3 hours so scrubbing always shows a continuous
+                           populated cityscape.
 
    The slider position is stored in timelineOffsetMinutes. Whenever the
    slider moves OR the simulation ticks, we redraw the map according to
@@ -1370,22 +1400,39 @@ function historicalField(targetDate) {
 
 /* ── Unified renderer for the main map ── */
 function renderAtOffset(offsetMinutes) {
-  let v, a;
-  if (offsetMinutes === 0) {
-    // Live field
-    v = state.valence;
-    a = state.arousal;
-  } else if (offsetMinutes > 0) {
-    // Forecast — project forward
-    const projected = projectField(offsetMinutes);
-    v = projected.valence;
-    a = projected.arousal;
-  } else {
-    // Historical — synthesize typical weather at the target past time
-    const target = new Date(Date.now() + offsetMinutes * 60 * 1000);
-    const hist = historicalField(target);
-    v = hist.valence;
-    a = hist.arousal;
+  // Always start from the timeline entries at this offset.
+  const tl = renderTimelineEntries(offsetMinutes);
+  let v = tl.valence;
+  let a = tl.arousal;
+
+  // For "now" and forward views, also include the live accumulated field
+  // (projected forward if needed). This ensures real visitor paints — which
+  // live in state.valence/arousal — stay visible as you scrub forward, not
+  // just at the moment of saving. For past views (offset < 0) we skip the
+  // live field, since accumulated "now" state shouldn't appear before it
+  // was painted.
+  if (offsetMinutes >= 0) {
+    let liveV, liveA;
+    if (offsetMinutes === 0) {
+      liveV = state.valence;
+      liveA = state.arousal;
+    } else {
+      const projected = projectField(offsetMinutes);
+      liveV = projected.valence;
+      liveA = projected.arousal;
+    }
+    // Composite: where the live field has signal, layer it over the timeline.
+    // We add the live-field values weighted by their magnitude — strong
+    // live-field cells fully override the timeline; weak ones blend in.
+    const composed_v = new Float32Array(v.length);
+    const composed_a = new Float32Array(a.length);
+    for (let i = 0; i < v.length; i++) {
+      // Both layers contribute; clamp to valid range.
+      composed_v[i] = Math.max(-1.5, Math.min(1.5, v[i] + liveV[i]));
+      composed_a[i] = Math.max(-1.5, Math.min(1.5, a[i] + liveA[i]));
+    }
+    v = composed_v;
+    a = composed_a;
   }
 
   // Render to fieldCanvas the same way redrawField does, but using the
@@ -1398,8 +1445,9 @@ function renderAtOffset(offsetMinutes) {
       const vv = sampleField(v, gx, gy);
       const aa = sampleField(a, gx, gy);
       const [r, g, b, alpha] = cellColor(vv, aa);
+      const edge = edgeMask(gx, gy);
       const idx = (py * RENDER_SIZE + px) * 4;
-      img.data[idx] = r; img.data[idx+1] = g; img.data[idx+2] = b; img.data[idx+3] = alpha;
+      img.data[idx] = r; img.data[idx+1] = g; img.data[idx+2] = b; img.data[idx+3] = alpha * edge;
     }
   }
   fieldCtx.putImageData(img, 0, 0);
@@ -1459,12 +1507,227 @@ timelineSlider.addEventListener('input', () => {
 });
 
 /* ═══════════════════════════════════════════════════════════════════════
+   MOCK WEATHER SEEDING — fills the live field with atmospheric context
+   ───────────────────────────────────────────────────────────────────────
+   Without seeding, a fresh visitor opens the app to an empty white map
+   until someone paints into it. To make the piece feel alive from the
+   moment of arrival, we drop a structured set of "mock entries" into
+   the live field at startup, and replenish a handful periodically.
+
+   These behave like real entries — they diffuse, advect with wind,
+   decay over time. So a visitor's own contribution adds to (and
+   eventually replaces) the ambient backdrop.
+
+   The seeded pattern has loose structure: a bias toward heavier weather
+   near the inner districts, more turbulent toward the major arteries
+   (Ring), calmer toward the outskirts. This isn't a literal map of
+   Vienna's mood — it's a plausible-looking starting state.
+   ═══════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════
+   TIMELINE ENTRIES — continuous time-coherent representation
+   ───────────────────────────────────────────────────────────────────────
+   Each entry has a birth time. When rendering at offset T from "now":
+     - For each entry with birthTime ≤ T:
+       - age = T - birthTime (in minutes)
+       - drift its position by windVector × age
+       - decay its intensity exponentially with age
+       - if still visible, deposit it into the render field
+   This means scrubbing through the timeline shows a continuous animation
+   of entries appearing, drifting, fading — past or future.
+
+   Real entries (from painting) are also added here when saved, so the
+   visitor's own contribution is visible scrubbing forward.
+
+   Does NOT affect the live accumulated field that Supabase uploads. The
+   live field continues to receive paint deposits via depositPaintedRegion
+   exactly as before, so TouchDesigner sees unchanged data.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+// Structured mock mood for a given location (used both for timeline
+// seeding and ad-hoc mock entries). City center skews slightly turbulent,
+// outskirts skew calmer, with noise so it never looks formulaic.
+function mockMoodForLocation(lat, lng) {
+  const dLat = (lat - VIENNA_CENTER.lat) / HALF_LAT;
+  const dLng = (lng - VIENNA_CENTER.lng) / HALF_LNG;
+  const distNorm = Math.min(1, Math.sqrt(dLat*dLat + dLng*dLng));
+  let baseV, baseA;
+  if (distNorm < 0.3) {
+    baseV = -0.1 + (Math.random() - 0.5) * 0.6;
+    baseA =  0.2 + (Math.random() - 0.5) * 0.7;
+  } else if (distNorm < 0.7) {
+    baseV =  0.0 + (Math.random() - 0.5) * 0.8;
+    baseA =  0.0 + (Math.random() - 0.5) * 0.8;
+  } else {
+    baseV =  0.2 + (Math.random() - 0.5) * 0.6;
+    baseA = -0.2 + (Math.random() - 0.5) * 0.6;
+  }
+  return {
+    valence: Math.max(-1, Math.min(1, baseV)),
+    arousal: Math.max(-1, Math.min(1, baseA)),
+  };
+}
+
+// Sample a random location, biased toward the center
+function randomCityLocation() {
+  const angle = Math.random() * Math.PI * 2;
+  const radius = Math.pow(Math.random(), 1.5);
+  const offsetLat = Math.cos(angle) * radius * HALF_LAT * 0.7;
+  const offsetLng = Math.sin(angle) * radius * HALF_LNG * 0.7;
+  return {
+    lat: VIENNA_CENTER.lat + offsetLat,
+    lng: VIENNA_CENTER.lng + offsetLng,
+  };
+}
+
+// Add an entry to the timeline. birthTimeMs is absolute (Date.now() epoch ms).
+function addTimelineEntry(entry) {
+  state.timelineEntries.push(entry);
+  // Cap timeline size so memory doesn't grow unboundedly
+  const MAX_ENTRIES = 400;
+  if (state.timelineEntries.length > MAX_ENTRIES) {
+    state.timelineEntries.shift();
+  }
+}
+
+// Seed the timeline with mock entries spread across ±3 hours from now.
+// Birth times are spaced evenly with slight jitter, so the timeline feels
+// continuously populated rather than bunched.
+function seedTimelineHistory() {
+  const nowMs = Date.now();
+  const PAST_HOURS = 3;
+  const FUTURE_HOURS = 3;
+  const totalMinutes = (PAST_HOURS + FUTURE_HOURS) * 60;
+  const numEntries = 60;
+  // Drift compensation: entries born at time t have drifted by
+  // (now - t) minutes worth of wind by the time we view at "now".
+  // To spread evenly across the city at "now", anchor each birth
+  // position by subtracting the wind drift it will accumulate.
+  const driftPerMin = WIND_STRENGTH * (60000 / TICK_MS);
+
+  for (let i = 0; i < numEntries; i++) {
+    const t = (i / numEntries + (Math.random() - 0.5) / numEntries) * totalMinutes;
+    const birthOffsetMin = t - PAST_HOURS * 60;   // negative = past, positive = future
+    const birthTimeMs = nowMs + birthOffsetMin * 60 * 1000;
+    // Where we WANT it to appear at "now"
+    const targetLoc = randomCityLocation();
+    // Back-compute the birth location so wind drift from birthTime to "now"
+    // brings it to targetLoc. ageAtNow = -birthOffsetMin (positive for past).
+    const ageAtNowMin = -birthOffsetMin;
+    const driftCells = driftPerMin * ageAtNowMin;
+    // Convert wind drift from cells to lat/lng offset
+    const driftLat = -WIND_DIR.dy * driftCells * (2 * HALF_LAT) / GRID_SIZE;
+    const driftLng = -WIND_DIR.dx * driftCells * (2 * HALF_LNG) / GRID_SIZE;
+    const birthLat = targetLoc.lat + driftLat;
+    const birthLng = targetLoc.lng + driftLng;
+
+    const mood = mockMoodForLocation(birthLat, birthLng);
+    addTimelineEntry({
+      lat: birthLat,
+      lng: birthLng,
+      valence: mood.valence,
+      arousal: mood.arousal,
+      sigmaCells: 4 + Math.random() * 6,
+      birthTimeMs,
+    });
+  }
+}
+
+// Periodic real-time top-up: one new mock entry, born "now"
+function addAmbientEntry() {
+  const loc = randomCityLocation();
+  const mood = mockMoodForLocation(loc.lat, loc.lng);
+  addTimelineEntry({
+    lat: loc.lat,
+    lng: loc.lng,
+    valence: mood.valence,
+    arousal: mood.arousal,
+    sigmaCells: 4 + Math.random() * 6,
+    birthTimeMs: Date.now(),
+  });
+}
+
+// Render the timeline at the given offset (in minutes from now).
+// Returns a {valence, arousal} field built from all entries with
+// birthTime ≤ offset, drifted and decayed appropriately.
+function renderTimelineEntries(offsetMinutes) {
+  const v = new Float32Array(GRID_SIZE * GRID_SIZE);
+  const a = new Float32Array(GRID_SIZE * GRID_SIZE);
+  const nowMs = Date.now();
+  const targetMs = nowMs + offsetMinutes * 60 * 1000;
+
+  // Wind drift: same magnitude/direction as the live simulation.
+  // WIND_STRENGTH is cells/tick where 1 tick = TICK_MS = 5s. Per minute:
+  const driftPerMin = WIND_STRENGTH * (60000 / TICK_MS);
+  // Decay rate in the live sim is DECAY per tick → per minute:
+  const decayPerMin = 1 - Math.pow(1 - DECAY, 60 / (TICK_MS / 1000));
+
+  for (const entry of state.timelineEntries) {
+    if (entry.birthTimeMs > targetMs) continue;     // not yet born at this time
+    const ageMinutes = (targetMs - entry.birthTimeMs) / 60000;
+
+    // Fade — exponential decay over time. Stop rendering very faded entries.
+    const intensityScale = Math.pow(1 - decayPerMin, ageMinutes);
+    if (intensityScale < 0.05) continue;
+
+    // Drifted position: birth cell + wind direction × age
+    const cxBirth = (entry.lng - (VIENNA_CENTER.lng - HALF_LNG)) / (2 * HALF_LNG) * GRID_SIZE;
+    const cyBirth = (entry.lat - (VIENNA_CENTER.lat - HALF_LAT)) / (2 * HALF_LAT) * GRID_SIZE;
+    const cx = cxBirth + WIND_DIR.dx * driftPerMin * ageMinutes;
+    const cy = cyBirth + WIND_DIR.dy * driftPerMin * ageMinutes;
+
+    // Spread also grows slightly with age (mimics diffusion)
+    const sigma = entry.sigmaCells * (1 + ageMinutes * 0.02);
+    const radiusCells = Math.ceil(sigma * 2.5);
+
+    // Deposit this entry's drifted blob (replace-mode lerp)
+    const cx0 = Math.floor(cx), cy0 = Math.floor(cy);
+    for (let dy = -radiusCells; dy <= radiusCells; dy++) {
+      for (let dx = -radiusCells; dx <= radiusCells; dx++) {
+        const x = cx0 + dx, y = cy0 + dy;
+        if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) continue;
+        const ddx = (x + 0.5) - cx;
+        const ddy = (y + 0.5) - cy;
+        const r2 = ddx*ddx + ddy*ddy;
+        const gaussian = Math.exp(-r2 / (2 * sigma * sigma));
+        const w = Math.min(0.95, gaussian * 0.7 * intensityScale);
+        const idx = y * GRID_SIZE + x;
+        v[idx] = v[idx] + (entry.valence - v[idx]) * w;
+        a[idx] = a[idx] + (entry.arousal - a[idx]) * w;
+      }
+    }
+  }
+  // Clamp
+  for (let i = 0; i < v.length; i++) {
+    v[i] = Math.max(-1.5, Math.min(1.5, v[i]));
+    a[i] = Math.max(-1.5, Math.min(1.5, a[i]));
+  }
+  return { valence: v, arousal: a };
+}
+
+// True if the field is essentially empty (a fresh / decayed session)
+function fieldIsEmpty() {
+  let sum = 0;
+  for (let i = 0; i < state.valence.length; i++) {
+    sum += Math.abs(state.valence[i]) + Math.abs(state.arousal[i]);
+    if (sum > 5) return false;
+  }
+  return true;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    STARTUP
    ═══════════════════════════════════════════════════════════════════════ */
 initField();
 if (loadFieldLocal()) {
   // Loaded from previous session
 }
+// Seed the timeline with mock entries spread across ±3 hours from now, so
+// scrubbing the slider always shows a populated, drifting cityscape.
+seedTimelineHistory();
+// One ambient entry born "now" every 3 minutes, keeping the timeline
+// alive over time without overwhelming real visitor contributions.
+setInterval(addAmbientEntry, 3 * 60 * 1000);
+
 drawPicker();   // pre-render the colour picker
 // Draw the small legend canvas
 (function drawLegend(){
