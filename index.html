@@ -408,7 +408,7 @@ const DIFFUSION = 0.015;   // very slight smoothing per tick — preserves crisp
 const DECAY     = 0.0008;  // values fade slowly; painted weather lingers for many minutes
 
 /* Supabase config — leave blank for localStorage-only prototype. */
-const SUPABASE_URL = 'NEXT_PUBLIC_SUPABASE_URL=';
+const SUPABASE_URL = 'https://jpgotzihotnifhldjqpa.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwZ290emlob3RuaWZobGRqcXBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMDY1NjAsImV4cCI6MjA5NDY4MjU2MH0.vTt4SPjE4op9plhlAhDjnwsB29ENeQHPf75w7cxLeYU';
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1603,36 +1603,58 @@ function addTimelineEntry(entry) {
 // continuously populated rather than bunched.
 function seedTimelineHistory() {
   const nowMs = Date.now();
-  const PAST_HOURS = 3;
-  const FUTURE_HOURS = 3;
-  const totalMinutes = (PAST_HOURS + FUTURE_HOURS) * 60;
-  const numEntries = 60;
-  // Drift compensation: entries born at time t have drifted by
-  // (now - t) minutes worth of wind by the time we view at "now".
-  // To spread evenly across the city at "now", anchor each birth
-  // position by subtracting the wind drift it will accumulate.
   const driftPerMin = WIND_STRENGTH * (60000 / TICK_MS);
 
-  for (let i = 0; i < numEntries; i++) {
-    const t = (i / numEntries + (Math.random() - 0.5) / numEntries) * totalMinutes;
-    const birthOffsetMin = t - PAST_HOURS * 60;   // negative = past, positive = future
-    const birthTimeMs = nowMs + birthOffsetMin * 60 * 1000;
-    // Where we WANT it to appear at "now"
-    const targetLoc = randomCityLocation();
-    // Back-compute the birth location so wind drift from birthTime to "now"
-    // brings it to targetLoc. ageAtNow = -birthOffsetMin (positive for past).
-    const ageAtNowMin = -birthOffsetMin;
-    const driftCells = driftPerMin * ageAtNowMin;
-    // Convert wind drift from cells to lat/lng offset
+  // Two pools of entries:
+  //
+  //   1. "Past pool" — birth times in the past ~3 hours. These are visible
+  //      at offset = 0 (now). Birth positions are back-projected against
+  //      wind drift so that at "now" they appear spread across the city.
+  //      Scrubbing backward shows these at earlier moments of their drift.
+  //
+  //   2. "Future pool" — birth times spread across the next ~3 hours.
+  //      These are NOT visible at offset = 0; they pop in as you scrub
+  //      forward. Their birth positions are also back-projected so that
+  //      at their moment of birth they're spread across the city.
+  //
+  // Both pools are sized so the timeline always feels populated.
+
+  // Past pool — visible now
+  const PAST_COUNT = 50;
+  const PAST_MAX_AGE_MIN = 180;  // 3 hours
+  for (let i = 0; i < PAST_COUNT; i++) {
+    // Spread ages so we have a mix of recent and older
+    const ageMin = (i / PAST_COUNT + Math.random() / PAST_COUNT) * PAST_MAX_AGE_MIN;
+    const birthTimeMs = nowMs - ageMin * 60 * 1000;
+    const targetLoc = randomCityLocation();  // where it appears at "now"
+    const driftCells = driftPerMin * ageMin;
     const driftLat = -WIND_DIR.dy * driftCells * (2 * HALF_LAT) / GRID_SIZE;
     const driftLng = -WIND_DIR.dx * driftCells * (2 * HALF_LNG) / GRID_SIZE;
     const birthLat = targetLoc.lat + driftLat;
     const birthLng = targetLoc.lng + driftLng;
-
     const mood = mockMoodForLocation(birthLat, birthLng);
     addTimelineEntry({
       lat: birthLat,
       lng: birthLng,
+      valence: mood.valence,
+      arousal: mood.arousal,
+      sigmaCells: 4 + Math.random() * 6,
+      birthTimeMs,
+    });
+  }
+
+  // Future pool — appears as you scrub forward
+  const FUTURE_COUNT = 50;
+  const FUTURE_MAX_MIN = 180;
+  for (let i = 0; i < FUTURE_COUNT; i++) {
+    const birthOffsetMin = (i / FUTURE_COUNT + Math.random() / FUTURE_COUNT) * FUTURE_MAX_MIN;
+    const birthTimeMs = nowMs + birthOffsetMin * 60 * 1000;
+    // Want it at a random city location at its own moment of birth
+    const birthLoc = randomCityLocation();
+    const mood = mockMoodForLocation(birthLoc.lat, birthLoc.lng);
+    addTimelineEntry({
+      lat: birthLoc.lat,
+      lng: birthLoc.lng,
       valence: mood.valence,
       arousal: mood.arousal,
       sigmaCells: 4 + Math.random() * 6,
