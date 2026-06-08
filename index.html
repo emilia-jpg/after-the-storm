@@ -408,7 +408,7 @@ const DIFFUSION = 0.015;   // very slight smoothing per tick — preserves crisp
 const DECAY     = 0.0008;  // values fade slowly; painted weather lingers for many minutes
 
 /* Supabase config — leave blank for localStorage-only prototype. */
-const SUPABASE_URL = 'https://jpgotzihotnifhldjqpa.supabase.co';
+const SUPABASE_URL = 'NEXT_PUBLIC_SUPABASE_URL=';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwZ290emlob3RuaWZobGRqcXBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMDY1NjAsImV4cCI6MjA5NDY4MjU2MH0.vTt4SPjE4op9plhlAhDjnwsB29ENeQHPf75w7cxLeYU';
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -978,6 +978,15 @@ function redrawField() {
   if (typeof timelineOffsetMinutes !== 'undefined' && timelineOffsetMinutes !== 0) {
     return;
   }
+  // Route through renderAtOffset so the timeline overlay (mock + visitor
+  // entries) shows even when the live tick or startup calls redrawField.
+  // Guarded against being called before renderAtOffset / timeline machinery
+  // is defined (during early init).
+  if (typeof renderAtOffset === 'function' && typeof state.timelineEntries !== 'undefined') {
+    renderAtOffset(0);
+    return;
+  }
+  // Fallback: live-field-only render (used only before timeline init).
   const img = fieldCtx.createImageData(RENDER_SIZE, RENDER_SIZE);
   for (let py = 0; py < RENDER_SIZE; py++) {
     const gy = GRID_SIZE - 1 - (py / RENDER_SCALE);
