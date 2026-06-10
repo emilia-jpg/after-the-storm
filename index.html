@@ -28,10 +28,9 @@
 
   /* Timeline panel */
   .timeline {
-    background: rgba(0,0,0,0.02);
-    border: 1px solid rgba(0,0,0,0.06);
-    border-radius: 6px;
-    padding: 8px 12px;
+    background: transparent;
+    border: none;
+    padding: 4px 0;
     margin: 4px 0;
     display: flex;
     flex-direction: column;
@@ -56,20 +55,65 @@
     background: #f6f6f7;
     border: 1px solid rgba(0,0,0,0.12);
     color: #2a2a2d;
-    padding: 8px 14px;
-    border-radius: 6px;
+    padding: 8px 16px;
+    border-radius: 999px;
     font-size: 13px;
     cursor: pointer;
     font-family: inherit;
   }
   .row button:hover { background: #ececef; }
   .row button.primary {
-    background: #2a6fc1;
-    border-color: #2a6fc1;
+    background: #30509b;
+    border-color: #30509b;
     color: white;
   }
-  .row button.primary:hover { background: #1f5fab; }
+  .row button.primary:hover { background: #243d77; }
   .status { font-size: 12px; color: #6a6a6d; }
+
+  /* Branded range sliders (timeline + paint modal) */
+  input[type=range].brand,
+  .timeline input[type=range],
+  .modal input[type=range],
+  .size-label input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    background: rgba(0,0,0,0.10);
+    border-radius: 999px;
+    outline: none;
+  }
+  input[type=range].brand::-webkit-slider-thumb,
+  .timeline input[type=range]::-webkit-slider-thumb,
+  .modal input[type=range]::-webkit-slider-thumb,
+  .size-label input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: #30509b;
+    border: none;
+    cursor: pointer;
+    box-shadow: none;
+  }
+  input[type=range].brand::-moz-range-thumb,
+  .timeline input[type=range]::-moz-range-thumb,
+  .modal input[type=range]::-moz-range-thumb,
+  .size-label input[type=range]::-moz-range-thumb {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: #30509b;
+    border: none;
+    cursor: pointer;
+    box-shadow: none;
+  }
+  /* Firefox: fill the "lower" portion of the slider in brand blue */
+  .timeline input[type=range]::-moz-range-progress,
+  input[type=range].brand::-moz-range-progress {
+    background: #30509b;
+    height: 6px;
+    border-radius: 999px;
+  }
 
   /* Log modal */
   .modal-backdrop {
@@ -92,8 +136,8 @@
     box-shadow: 0 10px 40px rgba(0,0,0,0.18);
     color: #2a2a2d;
   }
-  .modal h2 { margin: 0 0 8px; font-size: 15px; font-weight: 500; }
-  .modal .help { font-size: 12px; color: #6a6a6d; margin-bottom: 18px; }
+  .modal h2 { margin: 0 0 8px; font-size: 15px; font-weight: 500; text-align: center; }
+  .modal .help { font-size: 12px; color: #6a6a6d; margin-bottom: 18px; text-align: center; }
   .modal .slider-labels {
     display: flex; justify-content: space-between;
     font-size: 11px; color: #6a6a6d;
@@ -101,12 +145,30 @@
   }
   .modal input[type=range] {
     width: 100%;
-    accent-color: #2a6fc1;
+    accent-color: #30509b;
   }
   .modal .modal-buttons {
-    display: flex; gap: 8px; justify-content: flex-end;
+    display: flex; gap: 8px; justify-content: center;
     margin-top: 20px;
   }
+  /* Cancel / Save buttons in the modal footer — match map-view button shape */
+  .modal .modal-buttons button {
+    background: #f6f6f7;
+    border: 1px solid rgba(0,0,0,0.12);
+    color: #2a2a2d;
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .modal .modal-buttons button:hover { background: #ececef; }
+  .modal .modal-buttons button.primary {
+    background: #30509b;
+    border-color: #30509b;
+    color: white;
+  }
+  .modal .modal-buttons button.primary:hover { background: #243d77; }
 
   /* Paint modal — bigger than the slider one */
   .modal.modal-paint {
@@ -114,9 +176,11 @@
   }
   .paint-row {
     display: flex;
-    gap: 18px;
+    gap: 32px;
     margin-bottom: 16px;
     flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-start;
   }
   .picker-block { display: flex; flex-direction: column; gap: 4px; }
   .picker {
@@ -167,27 +231,27 @@
   .tool-block {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
     align-items: stretch;
-    min-width: 100px;
+    min-width: 120px;
   }
   .tool-btn {
     background: #f6f6f7;
     border: 1px solid rgba(0,0,0,0.12);
     color: #2a2a2d;
-    padding: 7px 10px;
-    border-radius: 5px;
+    padding: 7px 14px;
+    border-radius: 999px;
     font-size: 12px;
     cursor: pointer;
     font-family: inherit;
   }
   .tool-btn:hover { background: #ececef; }
   .tool-btn.active {
-    background: #2a6fc1;
-    border-color: #2a6fc1;
+    background: #30509b;
+    border-color: #30509b;
     color: white;
   }
-  .tool-btn.small { font-size: 11px; padding: 5px 10px; }
+  .tool-btn.small { font-size: 11px; padding: 5px 12px; }
   .size-label {
     font-size: 11px;
     color: #6a6a6d;
@@ -195,7 +259,7 @@
     flex-direction: column;
     gap: 4px;
   }
-  .size-label input { width: 100%; accent-color: #2a6fc1; }
+  .size-label input { width: 100%; accent-color: #30509b; }
   .paint-area {
     position: relative;
     width: 320px; height: 320px;
@@ -229,7 +293,7 @@
 
   /* Legend */
   .legend {
-    position: absolute; top: 80px; right: 14px;
+    position: absolute; top: 80px; left: 14px;
     background: rgba(255,255,255,0.92);
     backdrop-filter: blur(4px);
     padding: 8px 10px; border-radius: 6px;
@@ -261,14 +325,15 @@
     background: #f0c060;
     border: 3px solid white;
     border-radius: 50%;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
   }
+  /* Suppress Leaflet's default marker drop shadow */
+  .leaflet-marker-shadow { display: none !important; }
 </style>
 </head>
 <body>
 <header>
   <h1>Emotional Weather — Vienna</h1>
-  <div class="sub">Paint your local weather: light, calm, heavy, or turbulent. Scrub the timeline to see past or future weather.</div>
+  <div class="sub">Paint your local weather: light, calm, heavy, or turbulent.</div>
 </header>
 
 <div id="map"></div>
@@ -287,7 +352,7 @@
 <div class="controls">
   <div class="row">
     <button id="btn-log" class="primary">＋ Log how I feel</button>
-    <button id="btn-locate">📍 Use my location</button>
+    <button id="btn-locate">Use my location</button>
     <div class="status" id="status">Click a spot on the map, or use your GPS.</div>
   </div>
 
@@ -297,8 +362,7 @@
       <div class="status" id="timeline-label" style="flex:1; text-align:center; font-weight: 500;">now</div>
     </div>
     <div class="row">
-      <input type="range" id="timeline-slider" min="-180" max="180" value="0" step="5"
-             style="flex:1; accent-color: #2a6fc1">
+      <input type="range" id="timeline-slider" min="-180" max="180" value="0" step="5">
     </div>
     <div class="row" style="font-size: 11px; color: #6a6a6d;">
       <span>−3 h (past)</span>
@@ -322,7 +386,7 @@
 
 <div class="modal-backdrop" id="modal">
   <div class="modal modal-paint">
-    <h2>Paint how you feel</h2>
+    <h2>How are you doing?</h2>
     <div class="help">Pick a colour from the square, paint your area. Each corner is a quality.</div>
 
     <div class="paint-row">
@@ -338,7 +402,6 @@
           <canvas id="picker-canvas" width="160" height="160"></canvas>
           <div class="picker-pin" id="picker-pin"></div>
         </div>
-        <div class="picker-help">drag the pin to blend</div>
       </div>
 
       <!-- Brush + erase tools -->
@@ -355,9 +418,8 @@
     <!-- Painting canvas. Represents a fixed area around the user's GPS pin. -->
     <div class="paint-area">
       <canvas id="paint-canvas" width="320" height="320"></canvas>
-      <div class="paint-pin">●</div>
     </div>
-    <div class="paint-area-help">painting in a ~500 m area around your pin</div>
+    <div class="paint-area-help">painting in a ~1 km area around you</div>
 
     <div class="modal-buttons">
       <button id="btn-cancel">Cancel</button>
@@ -470,7 +532,7 @@ function initField() {
 // 320×320 paint canvas. We map paint-canvas pixel positions to lat/lng
 // in a fixed-size area around (centerLat, centerLng), then back to grid
 // cells, accumulating weighted contributions per cell.
-const PAINT_AREA_KM = 0.25;    // 250 m radius (500 m diameter)
+const PAINT_AREA_KM = 0.5;    // 500 m radius (1 km diameter)
 const PAINT_CANVAS_SIZE = 320;
 
 function depositPaintedRegion(centerLat, centerLng, paintStrokes) {
@@ -749,8 +811,10 @@ async function saveFieldToSupabase() {
 const map = L.map('map', {
   center: [VIENNA_CENTER.lat, VIENNA_CENTER.lng],
   zoom: 11,
-  zoomControl: true,
+  zoomControl: false,   // we add it manually below at top-right
 }).setView([VIENNA_CENTER.lat, VIENNA_CENTER.lng], 11);
+
+L.control.zoom({ position: 'topright' }).addTo(map);
 
 // Light basemap, very faded so the map is essentially white with subtle
 // street outlines for orientation. No labels — purely aesthetic.
@@ -865,10 +929,10 @@ function labToRgb(L, a, b) {
 // Pre-compute Lab for the four corners. We blend in Lab — perceptually
 // uniform AND Cartesian, so there's no hue-wraparound discontinuity that
 // LCh interpolation can produce on a 2D bilinear blend.
-const CORNER_LIGHT     = [250, 200,  80];   // saturated warm amber
-const CORNER_TURBULENT = [180,  60, 200];   // punchy magenta-violet
-const CORNER_CALM      = [110, 230, 130];   // vivid spring green
-const CORNER_HEAVY     = [ 30,  50, 150];   // deep saturated blue
+const CORNER_LIGHT     = [255, 190,  40];   // very saturated warm amber
+const CORNER_TURBULENT = [200,  20, 220];   // punchy magenta-violet
+const CORNER_CALM      = [ 70, 240, 110];   // saturated spring green
+const CORNER_HEAVY     = [ 10,  20, 170];   // deep saturated blue
 const CORNER_LIGHT_LAB     = rgbToLab(...CORNER_LIGHT);
 const CORNER_TURBULENT_LAB = rgbToLab(...CORNER_TURBULENT);
 const CORNER_CALM_LAB      = rgbToLab(...CORNER_CALM);
@@ -943,10 +1007,11 @@ function cellColor(valence, arousal) {
   const dirA = arousal / dirScale;
   const [r, g, b] = blendCorners(dirV, dirA);
 
-  // Alpha curves up faster than linear so weak deposits still register
-  // visibly, but the very faintest dissipating cells fade to transparent.
-  const alpha = Math.min(1.0, intensity * 1.4);
-  return [r, g, b, alpha * 215];
+  // Alpha tuned for multiply blend mode: high enough that colours register
+  // as confident tint, low enough that the underlying basemap (streets,
+  // shapes) remains visible through every blob.
+  const alpha = Math.min(1.0, intensity * 1.1);
+  return [r, g, b, alpha * 160];
 }
 
 const ImgOverlay = L.imageOverlay('', [
@@ -954,6 +1019,18 @@ const ImgOverlay = L.imageOverlay('', [
   [VIENNA_CENTER.lat + HALF_LAT, VIENNA_CENTER.lng + HALF_LNG],
 ], { opacity: 1.0, interactive: false });
 ImgOverlay.addTo(map);
+// Multiply blend: blob pixels tint the underlying basemap. We apply the
+// blend mode both to the image element itself and to the overlay pane,
+// because Leaflet's stacking context handling can vary.
+function applyMultiply() {
+  const el = ImgOverlay.getElement();
+  if (el) el.style.mixBlendMode = 'multiply';
+  const pane = map.getPane('overlayPane');
+  if (pane) pane.style.mixBlendMode = 'multiply';
+}
+applyMultiply();
+ImgOverlay.on('add', applyMultiply);
+map.on('layeradd', applyMultiply);
 // Smooth bilinear scaling (default), since the canvas is now already
 // rendered at high resolution.
 
@@ -1430,15 +1507,22 @@ function renderAtOffset(offsetMinutes) {
       liveV = projected.valence;
       liveA = projected.arousal;
     }
-    // Composite: where the live field has signal, layer it over the timeline.
-    // We add the live-field values weighted by their magnitude — strong
-    // live-field cells fully override the timeline; weak ones blend in.
+    // Composite: at each cell, pick whichever layer has stronger signal.
+    // This avoids the previous additive approach which let a single
+    // strong live-field blob tint the entire map (e.g. when localStorage
+    // had a stale painted state).
     const composed_v = new Float32Array(v.length);
     const composed_a = new Float32Array(a.length);
     for (let i = 0; i < v.length; i++) {
-      // Both layers contribute; clamp to valid range.
-      composed_v[i] = Math.max(-1.5, Math.min(1.5, v[i] + liveV[i]));
-      composed_a[i] = Math.max(-1.5, Math.min(1.5, a[i] + liveA[i]));
+      const tlMag   = v[i] * v[i] + a[i] * a[i];
+      const liveMag = liveV[i] * liveV[i] + liveA[i] * liveA[i];
+      if (liveMag > tlMag) {
+        composed_v[i] = liveV[i];
+        composed_a[i] = liveA[i];
+      } else {
+        composed_v[i] = v[i];
+        composed_a[i] = a[i];
+      }
     }
     v = composed_v;
     a = composed_a;
@@ -1506,14 +1590,63 @@ function formatOffsetLabel(min) {
   const m = abs % 60;
   return m === 0 ? `${sign}${h} h` : `${sign}${h} h ${m} min`;
 }
+// Paints a horizontal gradient on the timeline track to colour the past
+// (negative) portion in brand blue from −180 to 0, leaving the future
+// (positive) portion neutral. Called on every slider change AND on init.
+function paintTimelineFill() {
+  const min = parseInt(timelineSlider.min, 10);
+  const max = parseInt(timelineSlider.max, 10);
+  const val = parseInt(timelineSlider.value, 10);
+  // The "past" portion is from min to 0 (i.e. [0..50%] of the range).
+  // The blue fills from the current value up to 0 if val ≤ 0,
+  // or shows nothing blue if val > 0 (since "past" is then untouched).
+  const range = max - min;
+  const zeroPos = ((0 - min) / range) * 100;          // typically 50%
+  const valPos  = ((val - min) / range) * 100;
+  let startPos, endPos;
+  if (val <= 0) {
+    startPos = valPos;
+    endPos = zeroPos;
+  } else {
+    // No past-fill when slider is in the future. Set zero-width gradient.
+    startPos = zeroPos;
+    endPos = zeroPos;
+  }
+  timelineSlider.style.background =
+    `linear-gradient(to right,
+       rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.10) ${startPos}%,
+       #30509b ${startPos}%, #30509b ${endPos}%,
+       rgba(0,0,0,0.10) ${endPos}%, rgba(0,0,0,0.10) 100%)`;
+}
+
 timelineSlider.addEventListener('input', () => {
   const min = parseInt(timelineSlider.value, 10);
   timelineOffsetMinutes = min;
   timelineLabel.textContent = formatOffsetLabel(min);
+  paintTimelineFill();
   // Debounce the heavy render so dragging the slider stays smooth
   clearTimeout(_scrubTimer);
   _scrubTimer = setTimeout(() => renderAtOffset(min), 60);
 });
+paintTimelineFill();   // initial paint
+
+// Generic "fill the track from left to current value" helper, applied to
+// the brush-size slider so it matches the timeline's filled-track look.
+function paintLeftFill(slider) {
+  const min = parseInt(slider.min, 10);
+  const max = parseInt(slider.max, 10);
+  const val = parseInt(slider.value, 10);
+  const pct = ((val - min) / (max - min)) * 100;
+  slider.style.background =
+    `linear-gradient(to right,
+       #30509b 0%, #30509b ${pct}%,
+       rgba(0,0,0,0.10) ${pct}%, rgba(0,0,0,0.10) 100%)`;
+}
+const brushSlider = document.getElementById('brush-size');
+if (brushSlider) {
+  brushSlider.addEventListener('input', () => paintLeftFill(brushSlider));
+  paintLeftFill(brushSlider);
+}
 
 /* ═══════════════════════════════════════════════════════════════════════
    MOCK WEATHER SEEDING — fills the live field with atmospheric context
@@ -1710,7 +1843,8 @@ function renderTimelineEntries(offsetMinutes) {
     const sigma = entry.sigmaCells * (1 + ageMinutes * 0.02);
     const radiusCells = Math.ceil(sigma * 2.5);
 
-    // Deposit this entry's drifted blob (replace-mode lerp)
+    // Soft Gaussian deposit — each cell weighted by its distance from the
+    // blob centre. Produces blurred-edge clouds rather than crisp shapes.
     const cx0 = Math.floor(cx), cy0 = Math.floor(cy);
     for (let dy = -radiusCells; dy <= radiusCells; dy++) {
       for (let dx = -radiusCells; dx <= radiusCells; dx++) {
@@ -1752,12 +1886,10 @@ initField();
 if (loadFieldLocal()) {
   // Loaded from previous session
 }
-// Seed the timeline with mock entries spread across ±3 hours from now, so
-// scrubbing the slider always shows a populated, drifting cityscape.
-seedTimelineHistory();
-// One ambient entry born "now" every 3 minutes, keeping the timeline
-// alive over time without overwhelming real visitor contributions.
-setInterval(addAmbientEntry, 3 * 60 * 1000);
+// Mock weather seeding is disabled. Real visitor paints still flow into
+// both the live field (for Supabase / TouchDesigner) and the timeline
+// (for forward-scrubbing visibility). When the app first loads, the map
+// starts empty — visitors fill it themselves.
 
 drawPicker();   // pre-render the colour picker
 // Draw the small legend canvas
